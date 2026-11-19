@@ -9,7 +9,8 @@
 
 - **Visual Split-Pane Studio** — Interactive recursive binary split-pane editor with draggable dividers, 1-click structure presets (Single, Dual Columns, Main + Side Stack, 2×2 Quad Mosaic, Command Center, Triple Columns), multi-tab layouts, and live per-pane command/env/directory configuration.
 - **Menu Bar Quick-Launcher** — Lives in your macOS Menu Bar for instant 1-click launching of pinned & custom mosaics, with an on-the-fly terminal override picker.
-- **8 Terminal Drivers Supported** — Automatic installation detection + dry-run script inspector before execution.
+- **Live Script Editor** — Toggle seamlessly between **Mosaic** and **Script** (`⇧⌘I`) with line numbers, Find & Replace (`⌘F`), zero-execution syntax validation (`osacompile`, `zsh -n`, YAML/Kitty checks), on-the-fly execution (`⌘↩`) of unsaved edits, or persistent per-terminal custom script overrides (`⌘S`) with 1-click Reset to Mosaic.
+- **8 Terminal Drivers Supported** — Automatic installation detection across iTerm2, Apple Terminal, Warp, WezTerm, Kitty, Ghostty, Alacritty, and tmux.
 - **Companion CLI (`tessera`)** — Bundled inside `Tessera.app` (installable to `PATH` from Settings) and shipped as a standalone release archive for Raycast, Alfred, and shell automation.
 - **GitHub Releases Auto-Update Checker** — Background + manual SemVer 2.0 release checking against GitHub Releases, release notes viewer, direct `.dmg`/`.zip` download with live progress, cryptographic **SHA-256 verification** against `SHA256SUMS.txt`, pre-release opt-in, and Skip Version support.
 - **Native Universal macOS Builds** — Built in pure Swift & SwiftUI (`arm64` + `x86_64`), zero Electron runtime overhead.

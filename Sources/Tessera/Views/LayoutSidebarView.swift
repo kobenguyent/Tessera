@@ -211,6 +211,12 @@ private struct SidebarLayoutRow: View {
                             .font(.system(size: 9))
                             .foregroundStyle(.secondary)
                     }
+                    if layout.hasAnyCustomScript {
+                        Image(systemName: "chevron.left.forwardslash.chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Color(hex: "#10B981"))
+                            .help("Has custom script override")
+                    }
                 }
 
                 Text("\(layout.totalPaneCount) pane\(layout.totalPaneCount == 1 ? "" : "s") · \(appState.resolvedTerminal(for: layout).displayName)")
@@ -239,7 +245,7 @@ private struct SidebarLayoutRow: View {
         .onHover { isHovered = $0 }
         .contextMenu {
             Button("Launch Mosaic") { appState.launch(layout: layout) }
-            Button("Inspect Generated Script") { appState.openScriptPreview(for: layout) }
+            Button("Edit Script") { appState.openScriptEditor(for: layout) }
             Divider()
             Button(layout.isPinned ? "Unpin from Menu Bar" : "Pin to Menu Bar") {
                 appState.togglePin(layout)

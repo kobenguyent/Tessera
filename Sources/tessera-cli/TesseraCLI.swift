@@ -43,7 +43,8 @@ struct TesseraCLI {
           tessera run <layout> [options]                Launch a layout by name or slug
             --terminal, -t <name>                       Override terminal (iterm2, terminal, warp, wezterm, kitty, ghostty, alacritty, tmux)
             --cwd <path>                                Override root working directory
-            --dry-run                                   Print the generated orchestration script without executing
+            --dry-run                                   Print the orchestration script without executing
+            --generated                                 Ignore any saved custom script override and regenerate from panes
           tessera terminals                             Show detected terminal emulators and capabilities
           tessera check-update [--repo owner/repo]      Check GitHub Releases for a newer version
             --prerelease                                Include pre-release builds
@@ -83,6 +84,7 @@ struct TesseraCLI {
         var terminalOverride: TerminalKind?
         var cwdOverride: String?
         var dryRun = false
+        var ignoreCustomScript = false
 
         var idx = 0
         while idx < args.count {
@@ -104,6 +106,8 @@ struct TesseraCLI {
                 cwdOverride = args[idx]
             case "--dry-run":
                 dryRun = true
+            case "--generated":
+                ignoreCustomScript = true
             default:
                 if targetQuery == nil {
                     targetQuery = arg
@@ -140,10 +144,15 @@ struct TesseraCLI {
             let terminal = terminalOverride ?? layout.preferredTerminal ?? settings.defaultTerminal
             let hostForTmux: TerminalKind = detector.detect(.iterm2).isInstalled ? .iterm2 : .appleTerminal
             let context = LaunchContext(hostTerminalForTmux: hostForTmux)
-            let plan = LaunchPlanBuilder.build(layout: layout, terminal: terminal, context: context)
+            let plan = LaunchPlanBuilder.build(
+                layout: layout,
+                terminal: terminal,
+                context: context,
+                ignoreCustomScript: ignoreCustomScript
+            )
 
             if dryRun {
-                print("# \(plan.previewTitle)")
+                print("# \(plan.previewTitle)" + (plan.isCustomScript ? " [Custom Script Override]" : ""))
                 print("# \(plan.summary)")
                 for warning in plan.warnings {
                     print("# Note: \(warning)")

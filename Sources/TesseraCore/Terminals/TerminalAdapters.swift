@@ -21,26 +21,33 @@ public enum LaunchPlanBuilder {
     public static func build(
         layout: TesseraLayout,
         terminal: TerminalKind,
-        context: LaunchContext = LaunchContext()
+        context: LaunchContext = LaunchContext(),
+        ignoreCustomScript: Bool = false
     ) -> LaunchPlan {
+        let generated: LaunchPlan
         switch terminal {
         case .iterm2:
-            return buildITerm2Plan(layout: layout, context: context)
+            generated = buildITerm2Plan(layout: layout, context: context)
         case .appleTerminal:
-            return buildAppleTerminalPlan(layout: layout, context: context)
+            generated = buildAppleTerminalPlan(layout: layout, context: context)
         case .warp:
-            return buildWarpPlan(layout: layout, context: context)
+            generated = buildWarpPlan(layout: layout, context: context)
         case .wezterm:
-            return buildWezTermPlan(layout: layout, context: context)
+            generated = buildWezTermPlan(layout: layout, context: context)
         case .kitty:
-            return buildKittyPlan(layout: layout, context: context)
+            generated = buildKittyPlan(layout: layout, context: context)
         case .ghostty:
-            return buildGhosttyPlan(layout: layout, context: context)
+            generated = buildGhosttyPlan(layout: layout, context: context)
         case .alacritty:
-            return buildAlacrittyPlan(layout: layout, context: context)
+            generated = buildAlacrittyPlan(layout: layout, context: context)
         case .tmux:
-            return buildTmuxPlan(layout: layout, context: context)
+            generated = buildTmuxPlan(layout: layout, context: context)
         }
+
+        if !ignoreCustomScript, let custom = layout.customScript(for: terminal) {
+            return generated.withCustomContent(custom, isCustomScript: true)
+        }
+        return generated
     }
 
     // MARK: - 1. iTerm2 (Full Native Splits, Tabs, Profiles, Bounds & Focus)

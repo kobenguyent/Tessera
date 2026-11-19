@@ -65,13 +65,6 @@ struct StudioView: View {
             }
         }
         .animation(.spring(duration: 0.25), value: appState.toast)
-        .sheet(item: Binding(
-            get: { appState.previewPlan.map(IdentifiableLaunchPlan.init) },
-            set: { if $0 == nil { appState.previewPlan = nil } }
-        )) { wrapped in
-            ScriptPreviewSheet(plan: wrapped.plan)
-                .environmentObject(appState)
-        }
         .sheet(isPresented: $appState.showingUpdateSheet) {
             UpdateSheetView()
                 .environmentObject(appState)
@@ -102,9 +95,4 @@ struct StudioView: View {
         .padding(.vertical, 8)
         .background(Color(hex: "#10B981").opacity(0.11))
     }
-}
-
-private struct IdentifiableLaunchPlan: Identifiable {
-    let id = UUID()
-    let plan: LaunchPlan
 }

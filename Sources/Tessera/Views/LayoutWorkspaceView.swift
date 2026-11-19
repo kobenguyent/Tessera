@@ -25,24 +25,30 @@ struct LayoutWorkspaceView: View {
 
             Divider()
 
-            // Main Interactive Studio Area: Canvas (left) + Pane Inspector (right)
-            HSplitView {
-                VStack(spacing: 12) {
-                    if let tab = appState.selectedTab {
-                        MosaicCanvasView(layout: layout, tab: tab)
-                            .frame(minWidth: 420, minHeight: 320)
+            // Main Interactive Studio Area: Visual Mosaic OR Live Script Editor
+            if appState.workspaceMode == .mosaic {
+                HSplitView {
+                    VStack(spacing: 12) {
+                        if let tab = appState.selectedTab {
+                            MosaicCanvasView(layout: layout, tab: tab)
+                                .frame(minWidth: 420, minHeight: 320)
+                        }
+
+                        // Bottom Capability & Hint Strip
+                        capabilityBar
                     }
+                    .padding(16)
+                    .frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)
 
-                    // Bottom Capability & Hint Strip
-                    capabilityBar
+                    if let pane = appState.selectedPane {
+                        PaneInspectorView(layout: layout, pane: pane)
+                            .frame(minWidth: 290, idealWidth: 325, maxWidth: 390)
+                    }
                 }
-                .padding(16)
-                .frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)
-
-                if let pane = appState.selectedPane {
-                    PaneInspectorView(layout: layout, pane: pane)
-                        .frame(minWidth: 290, idealWidth: 325, maxWidth: 390)
-                }
+            } else {
+                ScriptEditorView(layout: layout)
+                    .padding(16)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
     }
@@ -142,16 +148,52 @@ struct LayoutWorkspaceView: View {
             .frame(width: 155)
             .help("Window placement preset")
 
-            // Dry-Run Script Inspector
-            Button {
-                appState.openScriptPreview(for: layout)
-            } label: {
-                Label("Script", systemImage: "doc.text.magnifyingglass")
+            // Mosaic / Live Script Editor Switcher
+            let activeTerminal = appState.resolvedTerminal(for: layout)
+            let hasLiveDraft = appState.hasUnsavedScriptDraft(for: layout, terminal: activeTerminal)
+            let hasSavedCustom = layout.hasCustomScript(for: activeTerminal)
+
+            HStack(spacing: 2) {
+                ForEach(WorkspaceMode.allCases) { mode in
+                    let selected = appState.workspaceMode == mode
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            appState.workspaceMode = mode
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: mode.symbolName)
+                                .font(.system(size: 11, weight: .semibold))
+                            Text(mode.label)
+                                .font(.system(size: 12, weight: selected ? .semibold : .medium))
+                            if mode == .script && (hasLiveDraft || hasSavedCustom) {
+                                Circle()
+                                    .fill(hasLiveDraft ? Color.orange : Color(hex: "#10B981"))
+                                    .frame(width: 6, height: 6)
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(
+                            selected ? Color(hex: layout.accentHex).opacity(0.22) : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        )
+                        .foregroundStyle(selected ? Color.primary : Color.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .buttonStyle(.bordered)
-            .help("Inspect generated AppleScript / Shell / YAML (⇧⌘I)")
+            .padding(3)
+            .background(.quaternary.opacity(0.55), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .help("Switch between Visual Mosaic and Live Script Editor (⇧⌘I)")
 
             // Primary Launch Button
+            let launchTitle: String = {
+                if hasLiveDraft { return "Run Edited Script" }
+                if hasSavedCustom { return "Run Custom Script" }
+                return "Launch Mosaic"
+            }()
+
             Button {
                 appState.launch(layout: layout)
             } label: {
@@ -161,16 +203,16 @@ struct LayoutWorkspaceView: View {
                     } else {
                         Image(systemName: "play.fill")
                     }
-                    Text("Launch Mosaic")
+                    Text(launchTitle)
                         .fontWeight(.semibold)
                 }
                 .padding(.horizontal, 6)
             }
             .buttonStyle(.borderedProminent)
-            .tint(Color(hex: layout.accentHex))
+            .tint(hasLiveDraft ? Color.orange : Color(hex: layout.accentHex))
             .disabled(appState.isLaunching)
             .keyboardShortcut(.return, modifiers: .command)
-            .help("Launch this mosaic in \(appState.resolvedTerminal(for: layout).displayName) (⌘↩)")
+            .help("Launch in \(activeTerminal.displayName) (⌘↩)")
         }
     }
 
@@ -311,8 +353,23 @@ struct LayoutWorkspaceView: View {
             if caps.nativeTabs {
                 PillBadge(text: "Multi-Tab", systemImage: "macwindow.on.rectangle", tint: Color(hex: "#0EA5E9"))
             }
+            if appState.hasUnsavedScriptDraft(for: layout, terminal: terminal) {
+                Button {
+                    appState.workspaceMode = .script
+                } label: {
+                    PillBadge(text: "Unsaved Script Draft", systemImage: "pencil.circle.fill", tint: .orange)
+                }
+                .buttonStyle(.plain)
+            } else if layout.hasCustomScript(for: terminal) {
+                Button {
+                    appState.workspaceMode = .script
+                } label: {
+                    PillBadge(text: "Custom Script Active", systemImage: "chevron.left.forwardslash.chevron.right", tint: Color(hex: "#10B981"))
+                }
+                .buttonStyle(.plain)
+            }
             Spacer()
-            Text("Click any pane to configure commands · Drag dividers to resize")
+            Text("Click any pane to configure · Switch to Script to edit code live")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

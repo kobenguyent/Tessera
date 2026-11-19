@@ -117,8 +117,16 @@ public struct TesseraLayout: Identifiable, Codable, Equatable, Hashable, Sendabl
     public var tags: [String]
     public var isPinned: Bool
     public var isBuiltIn: Bool
+    /// Optional user-edited launch scripts keyed by `TerminalKind.rawValue`.
+    public var customScripts: [String: String]
     public var createdAt: Date
     public var updatedAt: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, subtitle, icon, accentHex, preferredTerminal
+        case workingDirectory, windowFrame, tabs, tags, isPinned, isBuiltIn
+        case customScripts, createdAt, updatedAt
+    }
 
     public init(
         id: UUID = UUID(),
@@ -133,6 +141,7 @@ public struct TesseraLayout: Identifiable, Codable, Equatable, Hashable, Sendabl
         tags: [String] = [],
         isPinned: Bool = false,
         isBuiltIn: Bool = false,
+        customScripts: [String: String] = [:],
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -148,8 +157,53 @@ public struct TesseraLayout: Identifiable, Codable, Equatable, Hashable, Sendabl
         self.tags = tags
         self.isPinned = isPinned
         self.isBuiltIn = isBuiltIn
+        self.customScripts = customScripts
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.name = try container.decode(String.self, forKey: .name)
+        self.subtitle = try container.decodeIfPresent(String.self, forKey: .subtitle) ?? ""
+        self.icon = try container.decodeIfPresent(String.self, forKey: .icon) ?? "square.grid.2x2"
+        self.accentHex = try container.decodeIfPresent(String.self, forKey: .accentHex) ?? "#6366F1"
+        self.preferredTerminal = try container.decodeIfPresent(TerminalKind.self, forKey: .preferredTerminal)
+        self.workingDirectory = try container.decodeIfPresent(String.self, forKey: .workingDirectory) ?? "~"
+        self.windowFrame = try container.decodeIfPresent(WindowFramePreset.self, forKey: .windowFrame) ?? .centeredLarge
+        let decodedTabs = try container.decodeIfPresent([TesseraTab].self, forKey: .tabs) ?? []
+        self.tabs = decodedTabs.isEmpty ? [TesseraTab(root: .leaf(PaneSpec()))] : decodedTabs
+        self.tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        self.isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+        self.isBuiltIn = try container.decodeIfPresent(Bool.self, forKey: .isBuiltIn) ?? false
+        self.customScripts = try container.decodeIfPresent([String: String].self, forKey: .customScripts) ?? [:]
+        self.createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        self.updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+    }
+
+    public func customScript(for terminal: TerminalKind) -> String? {
+        guard let script = customScripts[terminal.rawValue],
+              !script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return script
+    }
+
+    public func hasCustomScript(for terminal: TerminalKind) -> Bool {
+        customScript(for: terminal) != nil
+    }
+
+    public var hasAnyCustomScript: Bool {
+        customScripts.values.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    public mutating func setCustomScript(_ script: String?, for terminal: TerminalKind) {
+        if let script, !script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            customScripts[terminal.rawValue] = script
+        } else {
+            customScripts.removeValue(forKey: terminal.rawValue)
+        }
     }
 
     public var totalPaneCount: Int {
@@ -191,6 +245,7 @@ public struct TesseraLayout: Identifiable, Codable, Equatable, Hashable, Sendabl
             tags: tags,
             isPinned: false,
             isBuiltIn: false,
+            customScripts: customScripts,
             createdAt: now,
             updatedAt: now
         )

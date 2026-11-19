@@ -32,12 +32,40 @@ enum UpdateUIState: Equatable {
     }
 }
 
+enum WorkspaceMode: String, CaseIterable, Identifiable {
+    case mosaic
+    case script
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .mosaic: return "Mosaic"
+        case .script: return "Script"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .mosaic: return "square.grid.2x2"
+        case .script: return "chevron.left.forwardslash.chevron.right"
+        }
+    }
+}
+
+struct ScriptDraftKey: Hashable {
+    let layoutID: UUID
+    let terminal: TerminalKind
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var layouts: [TesseraLayout] = []
     @Published var selectedLayoutID: UUID?
     @Published var selectedTabID: UUID?
     @Published var selectedPaneID: UUID?
+    @Published var workspaceMode: WorkspaceMode = .mosaic
+    @Published var liveScriptDrafts: [ScriptDraftKey: String] = [:]
 
     @Published var settings: AppSettings
     @Published var detectedTerminals: [DetectedTerminal] = []
@@ -45,7 +73,6 @@ final class AppState: ObservableObject {
 
     @Published var isLaunching = false
     @Published var toast: ToastMessage?
-    @Published var previewPlan: LaunchPlan?
 
     @Published var updateState: UpdateUIState = .idle
     @Published var showingUpdateSheet = false
@@ -216,6 +243,7 @@ final class AppState: ObservableObject {
 
     func deleteLayout(_ layout: TesseraLayout) {
         layouts.removeAll(where: { $0.id == layout.id })
+        liveScriptDrafts = liveScriptDrafts.filter { $0.key.layoutID != layout.id }
         saveLayouts()
         if selectedLayoutID == layout.id {
             selectLayout(layouts.first?.id)
@@ -337,13 +365,18 @@ final class AppState: ObservableObject {
         }
     }
 
-    // MARK: - Launching & Script Preview
+    // MARK: - Launching & Live Script Editor
 
     func resolvedTerminal(for layout: TesseraLayout, override: TerminalKind? = nil) -> TerminalKind {
         override ?? layout.preferredTerminal ?? settings.defaultTerminal
     }
 
-    func makeLaunchPlan(for layout: TesseraLayout, terminalOverride: TerminalKind? = nil) -> LaunchPlan {
+    func makeLaunchPlan(
+        for layout: TesseraLayout,
+        terminalOverride: TerminalKind? = nil,
+        includeLiveDraft: Bool = true,
+        ignoreCustomScript: Bool = false
+    ) -> LaunchPlan {
         let terminal = resolvedTerminal(for: layout, override: terminalOverride)
         let hostForTmux: TerminalKind = isTerminalInstalled(.iterm2) ? .iterm2 : .appleTerminal
         let context = LaunchContext(
@@ -351,24 +384,126 @@ final class AppState: ObservableObject {
             homeDirectory: NSHomeDirectory(),
             hostTerminalForTmux: hostForTmux
         )
-        return LaunchPlanBuilder.build(layout: layout, terminal: terminal, context: context)
+        let basePlan = LaunchPlanBuilder.build(
+            layout: layout,
+            terminal: terminal,
+            context: context,
+            ignoreCustomScript: ignoreCustomScript
+        )
+
+        if includeLiveDraft, !ignoreCustomScript,
+           let draft = liveScriptDrafts[ScriptDraftKey(layoutID: layout.id, terminal: terminal)] {
+            return basePlan.withCustomContent(draft, isCustomScript: true)
+        }
+        return basePlan
     }
 
-    func openScriptPreview(for layout: TesseraLayout, terminalOverride: TerminalKind? = nil) {
-        previewPlan = makeLaunchPlan(for: layout, terminalOverride: terminalOverride)
+    func effectiveScriptText(for layout: TesseraLayout, terminal: TerminalKind) -> String {
+        let key = ScriptDraftKey(layoutID: layout.id, terminal: terminal)
+        if let draft = liveScriptDrafts[key] {
+            return draft
+        }
+        return makeLaunchPlan(for: layout, terminalOverride: terminal, includeLiveDraft: false).previewContent
+    }
+
+    func hasUnsavedScriptDraft(for layout: TesseraLayout, terminal: TerminalKind) -> Bool {
+        liveScriptDrafts[ScriptDraftKey(layoutID: layout.id, terminal: terminal)] != nil
+    }
+
+    func setLiveScriptDraft(_ text: String, for layout: TesseraLayout, terminal: TerminalKind) {
+        let key = ScriptDraftKey(layoutID: layout.id, terminal: terminal)
+        let persistedBaseline = makeLaunchPlan(
+            for: layout,
+            terminalOverride: terminal,
+            includeLiveDraft: false
+        ).previewContent
+
+        if text == persistedBaseline {
+            liveScriptDrafts.removeValue(forKey: key)
+        } else {
+            liveScriptDrafts[key] = text
+        }
+    }
+
+    func saveLiveScriptOverride(for layout: TesseraLayout, terminal: TerminalKind) {
+        let key = ScriptDraftKey(layoutID: layout.id, terminal: terminal)
+        let currentText = effectiveScriptText(for: layout, terminal: terminal)
+        let trimmed = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            showToast("Cannot Save Empty Script", subtitle: "Add script content or reset to generated.", isError: true)
+            return
+        }
+
+        let generatedText = makeLaunchPlan(
+            for: layout,
+            terminalOverride: terminal,
+            includeLiveDraft: false,
+            ignoreCustomScript: true
+        ).previewContent
+
+        guard let idx = layouts.firstIndex(where: { $0.id == layout.id }) else { return }
+        if currentText == generatedText {
+            layouts[idx].setCustomScript(nil, for: terminal)
+            liveScriptDrafts.removeValue(forKey: key)
+            layouts[idx].updatedAt = Date()
+            saveLayouts()
+            showToast("Using Auto-Generated Script", subtitle: "\(terminal.displayName) matches visual mosaic")
+        } else {
+            layouts[idx].setCustomScript(currentText, for: terminal)
+            liveScriptDrafts.removeValue(forKey: key)
+            layouts[idx].updatedAt = Date()
+            saveLayouts()
+            showToast("Saved Custom Script", subtitle: "\(layout.name) · \(terminal.displayName)")
+        }
+    }
+
+    func resetScriptToGenerated(for layout: TesseraLayout, terminal: TerminalKind) {
+        let key = ScriptDraftKey(layoutID: layout.id, terminal: terminal)
+        liveScriptDrafts.removeValue(forKey: key)
+        if let idx = layouts.firstIndex(where: { $0.id == layout.id }),
+           layouts[idx].hasCustomScript(for: terminal) {
+            layouts[idx].setCustomScript(nil, for: terminal)
+            layouts[idx].updatedAt = Date()
+            saveLayouts()
+        }
+        showToast("Regenerated from Mosaic", subtitle: "\(terminal.displayName) reset to auto-generated script")
+    }
+
+    func discardLiveScriptDraft(for layout: TesseraLayout, terminal: TerminalKind) {
+        liveScriptDrafts.removeValue(forKey: ScriptDraftKey(layoutID: layout.id, terminal: terminal))
+    }
+
+    func openScriptEditor(for layout: TesseraLayout) {
+        if selectedLayoutID != layout.id {
+            selectLayout(layout.id)
+        }
+        workspaceMode = .script
     }
 
     func launch(layout: TesseraLayout, terminalOverride: TerminalKind? = nil) {
-        let plan = makeLaunchPlan(for: layout, terminalOverride: terminalOverride)
+        let plan = makeLaunchPlan(for: layout, terminalOverride: terminalOverride, includeLiveDraft: true)
+        launch(plan: plan, paneCount: layout.totalPaneCount)
+    }
+
+    func launch(plan: LaunchPlan, paneCount: Int? = nil) {
+        guard !plan.previewContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            showToast("Script is Empty", subtitle: "Add commands or reset to generated before launching.", isError: true)
+            return
+        }
         isLaunching = true
         Task {
             let result = await launcher.execute(plan)
             isLaunching = false
             if result.succeeded {
-                showToast(
-                    "Launched \"\(layout.name)\"",
-                    subtitle: "in \(plan.terminal.displayName) · \(layout.totalPaneCount) pane(s)"
-                )
+                let detail: String
+                if plan.isCustomScript {
+                    detail = "in \(plan.terminal.displayName) · custom script"
+                } else if let paneCount {
+                    detail = "in \(plan.terminal.displayName) · \(paneCount) pane(s)"
+                } else {
+                    detail = "in \(plan.terminal.displayName)"
+                }
+                showToast("Launched \"\(plan.layoutName)\"", subtitle: detail)
             } else {
                 showToast(
                     "Launch Failed (\(plan.terminal.displayName))",

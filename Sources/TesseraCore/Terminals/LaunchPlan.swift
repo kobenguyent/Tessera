@@ -15,6 +15,7 @@ public struct LaunchPlan: Equatable, Sendable {
     public let previewLanguage: String
     public let previewContent: String
     public let action: LaunchAction
+    public let isCustomScript: Bool
 
     public init(
         terminal: TerminalKind,
@@ -24,7 +25,8 @@ public struct LaunchPlan: Equatable, Sendable {
         previewTitle: String,
         previewLanguage: String,
         previewContent: String,
-        action: LaunchAction
+        action: LaunchAction,
+        isCustomScript: Bool = false
     ) {
         self.terminal = terminal
         self.layoutName = layoutName
@@ -34,6 +36,36 @@ public struct LaunchPlan: Equatable, Sendable {
         self.previewLanguage = previewLanguage
         self.previewContent = previewContent
         self.action = action
+        self.isCustomScript = isCustomScript
+    }
+
+    /// Returns a copy of this launch plan whose executable payload is replaced with `editedContent`.
+    public func withCustomContent(_ editedContent: String, isCustomScript: Bool = true) -> LaunchPlan {
+        let updatedAction: LaunchAction
+        switch action {
+        case .appleScript:
+            updatedAction = .appleScript(editedContent)
+        case .shellScript:
+            updatedAction = .shellScript(editedContent)
+        case .writeFileAndRunShell(let filePath, _, let shellCommand):
+            updatedAction = .writeFileAndRunShell(
+                filePath: filePath,
+                fileContent: editedContent,
+                shellCommand: shellCommand
+            )
+        }
+
+        return LaunchPlan(
+            terminal: terminal,
+            layoutName: layoutName,
+            summary: isCustomScript ? "Runs custom edited \(terminal.displayName) script." : summary,
+            warnings: warnings,
+            previewTitle: previewTitle,
+            previewLanguage: previewLanguage,
+            previewContent: editedContent,
+            action: updatedAction,
+            isCustomScript: isCustomScript
+        )
     }
 }
 

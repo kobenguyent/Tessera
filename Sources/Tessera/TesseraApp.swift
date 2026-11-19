@@ -39,10 +39,8 @@ struct TesseraApp: App {
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(appState.selectedLayout == nil)
 
-                Button("Inspect Generated Script") {
-                    if let layout = appState.selectedLayout {
-                        appState.openScriptPreview(for: layout)
-                    }
+                Button("Toggle Script Editor") {
+                    appState.workspaceMode = (appState.workspaceMode == .script) ? .mosaic : .script
                 }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
                 .disabled(appState.selectedLayout == nil)
