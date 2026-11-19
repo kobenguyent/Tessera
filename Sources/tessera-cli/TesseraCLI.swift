@@ -38,7 +38,7 @@ struct TesseraCLI {
 
     private static func printUsage() {
         print("""
-        ✦ Tessera — Craft bespoke terminal mosaics & command rituals (v\(TesseraMetadata.currentVersionString))
+        Tessera — Terminal workspace mosaics & command launcher (v\(TesseraMetadata.currentVersionString))
 
         USAGE:
           tessera list                                  List all configured mosaic layouts
@@ -234,7 +234,7 @@ struct TesseraCLI {
                     print("✓ No newer releases found.")
                 }
             case .updateAvailable(let update), .skipped(let update):
-                print("✦ Update available: \(update.release.displayTitle) (v\(update.version))")
+                print("Update available: \(update.release.displayTitle) (v\(update.version))")
                 if let asset = update.preferredAsset {
                     print("  Asset: \(asset.name) (\(asset.formattedSize))")
                     print("  Download: \(asset.browserDownloadURL.absoluteString)")

@@ -7,60 +7,25 @@ struct MosaicCanvasView: View {
     let tab: TesseraTab
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Mock macOS terminal chrome header
-            HStack(spacing: 8) {
-                HStack(spacing: 6) {
-                    Circle().fill(Color(hex: "#FF5F56")).frame(width: 10, height: 10)
-                    Circle().fill(Color(hex: "#FFBD2E")).frame(width: 10, height: 10)
-                    Circle().fill(Color(hex: "#27C93F")).frame(width: 10, height: 10)
-                }
-
-                Spacer()
-
-                HStack(spacing: 6) {
-                    Image(systemName: appState.resolvedTerminal(for: layout).symbolName)
-                        .font(.system(size: 11))
-                    Text("\(appState.resolvedTerminal(for: layout).displayName) — \(tab.title)")
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                }
-                .foregroundStyle(.white.opacity(0.65))
-
-                Spacer()
-
-                Text("\(tab.root.leafCount) pane\(tab.root.leafCount == 1 ? "" : "s")")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .monospacedDigit()
-                    .foregroundStyle(.white.opacity(0.55))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2)
-                    .background(.white.opacity(0.08), in: Capsule())
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(Color(red: 0.11, green: 0.12, blue: 0.16))
-
-            Divider().overlay(.white.opacity(0.08))
-
-            // Interactive recursive split-pane canvas
-            GeometryReader { geo in
-                PaneNodeRenderer(
-                    node: tab.root,
-                    layout: layout,
-                    accentColor: Color(hex: layout.accentHex),
-                    totalPaneCount: tab.root.leafCount,
-                    size: geo.size
-                )
-            }
-            .padding(10)
-            .background(Color(red: 0.07, green: 0.08, blue: 0.11))
+        // Pure, distraction-free interactive split-pane canvas (zero redundant mock traffic-light bar)
+        GeometryReader { geo in
+            PaneNodeRenderer(
+                node: tab.root,
+                layout: layout,
+                accentColor: Color(hex: layout.accentHex),
+                totalPaneCount: tab.root.leafCount,
+                size: geo.size
+            )
         }
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .coordinateSpace(name: "MosaicCanvasSpace")
+        .padding(10)
+        .background(Color(red: 0.068, green: 0.076, blue: 0.112))
+        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color(hex: layout.accentHex).opacity(0.32), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(Color(hex: layout.accentHex).opacity(0.26), lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.22), radius: 14, y: 6)
+        .shadow(color: .black.opacity(0.20), radius: 12, y: 5)
     }
 }
 
@@ -82,16 +47,17 @@ private struct PaneNodeRenderer: View {
                 isSelected: appState.selectedPaneID == pane.id,
                 canDelete: totalPaneCount > 1
             )
+            .id(pane.id)
             .frame(width: max(40, size.width), height: max(40, size.height))
 
         case .split(let split):
-            let dividerThickness: CGFloat = 10
+            let dividerThickness: CGFloat = 12
             let ratio = CGFloat(SplitSpec.clampedRatio(split.ratio))
 
             if split.direction == .columns {
                 let available = max(80, size.width - dividerThickness)
-                let firstWidth = available * ratio
-                let secondWidth = available - firstWidth
+                let firstWidth = (available * ratio).rounded(.toNearestOrEven)
+                let secondWidth = max(40, available - firstWidth)
 
                 HStack(spacing: 0) {
                     PaneNodeRenderer(
@@ -107,6 +73,7 @@ private struct PaneNodeRenderer: View {
                         accentColor: accentColor
                     )
                     .frame(width: dividerThickness, height: size.height)
+                    .zIndex(2)
                     PaneNodeRenderer(
                         node: split.second,
                         layout: layout,
@@ -117,8 +84,8 @@ private struct PaneNodeRenderer: View {
                 }
             } else {
                 let available = max(80, size.height - dividerThickness)
-                let firstHeight = available * ratio
-                let secondHeight = available - firstHeight
+                let firstHeight = (available * ratio).rounded(.toNearestOrEven)
+                let secondHeight = max(40, available - firstHeight)
 
                 VStack(spacing: 0) {
                     PaneNodeRenderer(
@@ -134,6 +101,7 @@ private struct PaneNodeRenderer: View {
                         accentColor: accentColor
                     )
                     .frame(width: size.width, height: dividerThickness)
+                    .zIndex(2)
                     PaneNodeRenderer(
                         node: split.second,
                         layout: layout,
@@ -156,46 +124,111 @@ private struct SplitDividerHandle: View {
     @State private var isHovered = false
     @State private var dragStartRatio: Double?
 
+    private var isDragging: Bool {
+        dragStartRatio != nil
+    }
+
     var body: some View {
         ZStack {
             Color.clear
+
+            // Subtle full-span guide line while hovering or dragging
+            if isHovered || isDragging {
+                Rectangle()
+                    .fill(accentColor.opacity(isDragging ? 0.32 : 0.16))
+                    .frame(
+                        width: split.direction == .columns ? 1.5 : nil,
+                        height: split.direction == .columns ? nil : 1.5
+                    )
+                    .transition(.opacity)
+            }
+
+            // Center grip pill
             Capsule()
-                .fill(isHovered || dragStartRatio != nil ? accentColor : .white.opacity(0.18))
-                .frame(
-                    width: split.direction == .columns ? (isHovered ? 4 : 2) : 34,
-                    height: split.direction == .columns ? 34 : (isHovered ? 4 : 2)
+                .fill(isDragging ? accentColor : (isHovered ? accentColor.opacity(0.92) : .white.opacity(0.18)))
+                .shadow(
+                    color: (isHovered || isDragging) ? accentColor.opacity(0.50) : .clear,
+                    radius: isDragging ? 7 : 4
                 )
+                .frame(
+                    width: split.direction == .columns ? (isHovered || isDragging ? 4.5 : 2.5) : (isHovered || isDragging ? 48 : 34),
+                    height: split.direction == .columns ? (isHovered || isDragging ? 48 : 34) : (isHovered || isDragging ? 4.5 : 2.5)
+                )
+
+            // Live percentage HUD while dragging
+            if isDragging {
+                let firstPct = Int((split.ratio * 100).rounded())
+                let secondPct = 100 - firstPct
+                Text("\(firstPct)% · \(secondPct)%")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule()
+                            .fill(Color(red: 0.08, green: 0.09, blue: 0.14).opacity(0.94))
+                            .overlay(
+                                Capsule()
+                                    .strokeBorder(accentColor.opacity(0.65), lineWidth: 1)
+                            )
+                    )
+                    .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
+                    .offset(
+                        x: split.direction == .columns ? 0 : 0,
+                        y: split.direction == .columns ? -34 : -22
+                    )
+                    .fixedSize()
+            }
         }
         .contentShape(Rectangle())
+        .animation(TesseraMotion.hover, value: isHovered)
+        .animation(TesseraMotion.hover, value: isDragging)
         .onHover { hovering in
             isHovered = hovering
             if hovering {
                 if split.direction == .columns {
-                    NSCursor.resizeLeftRight.push()
+                    NSCursor.resizeLeftRight.set()
                 } else {
-                    NSCursor.resizeUpDown.push()
+                    NSCursor.resizeUpDown.set()
                 }
-            } else {
-                NSCursor.pop()
+            } else if !isDragging {
+                NSCursor.arrow.set()
+            }
+        }
+        .onTapGesture(count: 2) {
+            withAnimation(TesseraMotion.smooth) {
+                appState.updateSplitRatio(splitID: split.id, ratio: 0.5, persistImmediately: true)
             }
         }
         .gesture(
-            DragGesture(minimumDistance: 1)
+            DragGesture(minimumDistance: 0, coordinateSpace: .named("MosaicCanvasSpace"))
                 .onChanged { value in
                     if dragStartRatio == nil {
                         dragStartRatio = split.ratio
                     }
-                    let base = dragStartRatio ?? split.ratio
+                    guard let base = dragStartRatio, totalSpan > 0 else { return }
                     let delta = split.direction == .columns ? value.translation.width : value.translation.height
-                    guard totalSpan > 0 else { return }
-                    let updated = SplitSpec.clampedRatio(base + Double(delta / totalSpan))
-                    appState.updateSplitRatio(splitID: split.id, ratio: updated)
+                    var candidate = SplitSpec.clampedRatio(base + Double(delta / totalSpan))
+                    // Subtle magnetic snap at 50/50 center
+                    if abs(candidate - 0.5) < 0.012 {
+                        candidate = 0.5
+                    }
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        appState.updateSplitRatio(splitID: split.id, ratio: candidate, persistImmediately: false)
+                    }
                 }
                 .onEnded { _ in
                     dragStartRatio = nil
+                    appState.saveLayouts()
+                    if !isHovered {
+                        NSCursor.arrow.set()
+                    }
                 }
         )
-        .help("Drag to resize split (\(Int((split.ratio * 100).rounded()))% / \(Int(((1 - split.ratio) * 100).rounded()))%)")
+        .help("Drag to resize (\(Int((split.ratio * 100).rounded()))% / \(Int(((1 - split.ratio) * 100).rounded()))%) · Double-click to reset 50/50")
     }
 }
 
@@ -210,20 +243,30 @@ private struct PaneTileView: View {
     @State private var isHovered = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // Pane Header
-            HStack(spacing: 6) {
-                if pane.focus {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.yellow)
-                        .help("Initial keyboard focus")
-                }
-
+        VStack(alignment: .leading, spacing: 0) {
+            // Compact Terminal Pane Header Strip (fixed 34pt height so sibling pane dividers align pixel-perfectly)
+            HStack(spacing: 7) {
                 Text(pane.title.isEmpty ? "Untitled Pane" : pane.title)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.95))
+                    .foregroundStyle(.white.opacity(isSelected ? 0.96 : 0.86))
                     .lineLimit(1)
+
+                Text(layout.effectiveWorkingDirectory(for: pane))
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.38))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                if pane.focus {
+                    Text("FOCUS")
+                        .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                        .tracking(0.45)
+                        .foregroundStyle(accentColor)
+                        .padding(.horizontal, 5.5)
+                        .padding(.vertical, 1.5)
+                        .background(accentColor.opacity(0.16), in: Capsule())
+                        .help("Initial keyboard focus on launch")
+                }
 
                 if pane.delaySeconds > 0 {
                     Text("+\(String(format: "%.1fs", pane.delaySeconds))")
@@ -231,108 +274,131 @@ private struct PaneTileView: View {
                         .foregroundStyle(.orange)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)
-                        .background(.orange.opacity(0.18), in: Capsule())
+                        .background(.orange.opacity(0.16), in: Capsule())
                 }
 
                 Spacer(minLength: 4)
 
-                if isHovered || isSelected {
-                    HStack(spacing: 4) {
-                        tileActionButton(
-                            symbol: "rectangle.split.2x1",
-                            help: "Split Side-by-Side (Columns)"
-                        ) {
-                            appState.splitPane(pane.id, direction: .columns)
-                        }
-                        tileActionButton(
-                            symbol: "rectangle.split.1x2",
-                            help: "Split Top / Bottom (Rows)"
-                        ) {
-                            appState.splitPane(pane.id, direction: .rows)
-                        }
-                        if canDelete {
+                ZStack(alignment: .trailing) {
+                    if isHovered || isSelected {
+                        HStack(spacing: 4) {
                             tileActionButton(
-                                symbol: "xmark",
-                                help: "Remove Pane",
-                                destructive: true
+                                symbol: "rectangle.split.2x1",
+                                help: "Split Side-by-Side (Columns)"
                             ) {
-                                appState.removePane(pane.id)
+                                appState.splitPane(pane.id, direction: .columns)
+                            }
+                            tileActionButton(
+                                symbol: "rectangle.split.1x2",
+                                help: "Split Top / Bottom (Rows)"
+                            ) {
+                                appState.splitPane(pane.id, direction: .rows)
+                            }
+                            if canDelete {
+                                tileActionButton(
+                                    symbol: "xmark",
+                                    help: "Remove Pane",
+                                    destructive: true
+                                ) {
+                                    appState.removePane(pane.id)
+                                }
                             }
                         }
+                    } else {
+                        let count = pane.nonEmptyCommands.count
+                        Text(count == 0 ? "shell" : "\(count) cmd\(count == 1 ? "" : "s")")
+                            .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.28))
                     }
-                    .transition(.opacity)
                 }
+                .frame(height: 22)
             }
+            .padding(.horizontal, 12)
+            .frame(height: 36)
+            .background(.white.opacity(isSelected ? 0.032 : 0.018))
 
-            // Working Directory Pill
-            HStack(spacing: 4) {
-                Image(systemName: "folder")
-                    .font(.system(size: 9))
-                Text(layout.effectiveWorkingDirectory(for: pane))
-                    .font(.system(size: 10, design: .monospaced))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            .foregroundStyle(.white.opacity(0.48))
+            Rectangle()
+                .fill(.white.opacity(isSelected ? 0.085 : 0.055))
+                .frame(height: 0.75)
 
-            // Commands Preview
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 6) {
                 if !pane.environment.isEmpty {
                     Text(pane.environment.map { "\($0.key)=\($0.value)" }.joined(separator: " "))
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(Color(hex: "#38BDF8").opacity(0.85))
                         .lineLimit(1)
+                        .padding(.horizontal, 6)
                 }
 
-                if pane.nonEmptyCommands.isEmpty {
-                    Text("$ (interactive shell)")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.32))
-                        .italic()
-                } else {
-                    ForEach(Array(pane.nonEmptyCommands.prefix(4).enumerated()), id: \.offset) { _, cmd in
-                        HStack(alignment: .top, spacing: 5) {
-                            Text("$")
-                                .foregroundStyle(accentColor)
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            Text(cmd)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(.white.opacity(0.88))
-                                .lineLimit(2)
+                // Native Multi-Line Terminal Command Editor (zero SwiftUI layout animation for crisp instant typing)
+                PaneCommandEditorView(
+                    commands: commandsBinding,
+                    accentHex: layout.accentHex,
+                    placeholder: "Type command…",
+                    fontSize: 12.0,
+                    darkSurface: true,
+                    onFocus: {
+                        if appState.selectedPaneID != pane.id {
+                            appState.selectedPaneID = pane.id
                         }
                     }
-                    if pane.nonEmptyCommands.count > 4 {
-                        Text("… +\(pane.nonEmptyCommands.count - 4) more command(s)")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.45))
-                    }
-                }
+                )
+                .transaction { $0.animation = nil }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-
-            Spacer(minLength: 0)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
         }
-        .padding(11)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isSelected ? Color(red: 0.14, green: 0.16, blue: 0.23) : Color(red: 0.10, green: 0.11, blue: 0.16))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(
-                    isSelected ? accentColor : .white.opacity(isHovered ? 0.24 : 0.10),
-                    lineWidth: isSelected ? 2 : 1
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: isSelected
+                            ? [Color(red: 0.132, green: 0.150, blue: 0.218), Color(red: 0.108, green: 0.122, blue: 0.180)]
+                            : (isHovered
+                                ? [Color(red: 0.114, green: 0.128, blue: 0.184), Color(red: 0.096, green: 0.106, blue: 0.156)]
+                                : [Color(red: 0.100, green: 0.110, blue: 0.160), Color(red: 0.086, green: 0.095, blue: 0.140)]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
                 )
+                .animation(TesseraMotion.hover, value: isSelected)
+                .animation(TesseraMotion.hover, value: isHovered)
         )
-        .contentShape(Rectangle())
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .strokeBorder(
+                    isSelected ? accentColor.opacity(0.88) : .white.opacity(isHovered ? 0.20 : 0.085),
+                    lineWidth: isSelected ? 1.5 : 1
+                )
+                .animation(TesseraMotion.hover, value: isSelected)
+                .animation(TesseraMotion.hover, value: isHovered)
+        )
+        .shadow(
+            color: isSelected ? accentColor.opacity(0.16) : .black.opacity(0.14),
+            radius: isSelected ? 9 : 4,
+            y: 2
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
         .onTapGesture {
-            appState.selectedPaneID = pane.id
-        }
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.12)) {
-                isHovered = hovering
+            if appState.selectedPaneID != pane.id {
+                appState.selectedPaneID = pane.id
             }
         }
+        .onHover { hovering in
+            isHovered = hovering
+        }
+    }
+
+    private var commandsBinding: Binding<[String]> {
+        Binding(
+            get: { pane.commands },
+            set: { updated in
+                appState.updatePane(pane.id) { $0.commands = updated }
+            }
+        )
     }
 
     private func tileActionButton(
@@ -341,14 +407,22 @@ private struct PaneTileView: View {
         destructive: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        Button {
+            withAnimation(TesseraMotion.smooth) {
+                action()
+            }
+        } label: {
             Image(systemName: symbol)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(destructive ? Color.red.opacity(0.9) : .white.opacity(0.85))
-                .frame(width: 22, height: 20)
-                .background(.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                .foregroundStyle(destructive ? Color.red.opacity(0.92) : .white.opacity(0.86))
+                .frame(width: 23, height: 21)
+                .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(.white.opacity(0.10), lineWidth: 0.75)
+                )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TesseraIconButtonStyle(destructive: destructive, size: 23))
         .help(help)
     }
 }

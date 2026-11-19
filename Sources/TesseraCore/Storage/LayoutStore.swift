@@ -1,6 +1,18 @@
 import Foundation
 
+public enum StorageImportError: LocalizedError, Sendable {
+    case payloadTooLarge(maxBytes: Int)
+
+    public var errorDescription: String? {
+        switch self {
+        case .payloadTooLarge(let maxBytes):
+            return "Import file exceeds maximum allowed size (\(maxBytes / (1024 * 1024)) MB)."
+        }
+    }
+}
+
 public struct LayoutStore: Sendable {
+    public static let maxImportBytes = 10 * 1024 * 1024
     public let fileURL: URL
 
     public init(fileURL: URL? = nil) {
@@ -29,11 +41,16 @@ public struct LayoutStore: Sendable {
 
         let data = try Data(contentsOf: fileURL)
         let decoder = Self.makeDecoder()
-        let layouts = try decoder.decode([TesseraLayout].self, from: data)
-        if layouts.isEmpty {
-            return BuiltInPresets.makeDefaultLayouts()
+        do {
+            let layouts = try decoder.decode([TesseraLayout].self, from: data)
+            if layouts.isEmpty {
+                return BuiltInPresets.makeDefaultLayouts()
+            }
+            return layouts
+        } catch {
+            quarantineCorruptFile()
+            throw error
         }
-        return layouts
     }
 
     public func saveLayouts(_ layouts: [TesseraLayout]) throws {
@@ -42,6 +59,8 @@ public struct LayoutStore: Sendable {
         let encoder = Self.makeEncoder()
         let data = try encoder.encode(layouts)
         try data.write(to: fileURL, options: .atomic)
+        // Restrict layouts.json (which may contain pane environment secrets) to owner-only read/write
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
     }
 
     public func exportJSON(layouts: [TesseraLayout]) throws -> Data {
@@ -49,12 +68,26 @@ public struct LayoutStore: Sendable {
     }
 
     public func importJSON(from data: Data) throws -> [TesseraLayout] {
+        guard data.count <= Self.maxImportBytes else {
+            throw StorageImportError.payloadTooLarge(maxBytes: Self.maxImportBytes)
+        }
         let decoder = Self.makeDecoder()
         if let array = try? decoder.decode([TesseraLayout].self, from: data) {
             return array
         }
         let single = try decoder.decode(TesseraLayout.self, from: data)
         return [single]
+    }
+
+    private func quarantineCorruptFile() {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: fileURL.path) else { return }
+        let stamp = Int(Date().timeIntervalSince1970)
+        let backupURL = fileURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("\(fileURL.lastPathComponent).corrupt-\(stamp).bak")
+        try? fm.copyItem(at: fileURL, to: backupURL)
+        try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backupURL.path)
     }
 
     private static func makeEncoder() -> JSONEncoder {

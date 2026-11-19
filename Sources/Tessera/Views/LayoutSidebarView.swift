@@ -3,6 +3,7 @@ import TesseraCore
 
 struct LayoutSidebarView: View {
     @EnvironmentObject private var appState: AppState
+    @Binding var showingSidebar: Bool
     @State private var searchText = ""
 
     private var filteredLayouts: [TesseraLayout] {
@@ -25,54 +26,58 @@ struct LayoutSidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Brand header
-            HStack(spacing: 10) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color(hex: "#6366F1").opacity(0.22))
-                        .frame(width: 28, height: 28)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .strokeBorder(Color(hex: "#6366F1").opacity(0.45), lineWidth: 1)
-                        )
-                    Image(systemName: "square.grid.2x2.fill")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Color(hex: "#818CF8"))
-                }
+            // Top Traffic-Lights & Sidebar Toggle Bar (aligned to 46pt top header)
+            HStack(spacing: 7) {
+                // Space for native macOS traffic lights (close / minimize / zoom)
+                Spacer().frame(width: 62)
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(TesseraMetadata.appName)
-                        .font(.system(size: 14.5, weight: .bold, design: .rounded))
-                    Text("v\(TesseraMetadata.currentVersionString)")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
+                TesseraLogoView(size: 19)
 
-                Spacer(minLength: 4)
+                Text(TesseraMetadata.appName)
+                    .font(.system(size: 13.5, weight: .bold, design: .rounded))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+
+                Spacer(minLength: 6)
 
                 Button {
-                    appState.createNewLayout()
+                    withAnimation(TesseraMotion.smooth) {
+                        appState.createNewLayout()
+                    }
                 } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .frame(width: 22, height: 22)
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(width: 13, height: 13)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .buttonStyle(TesseraSoftButtonStyle(cornerRadius: 7, horizontalPadding: 6, verticalPadding: 4.5))
                 .help("New Mosaic Layout (⌘N)")
+
+                Button {
+                    withAnimation(TesseraMotion.smooth) {
+                        showingSidebar.toggle()
+                    }
+                } label: {
+                    Image(systemName: "sidebar.leading")
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 13, height: 13)
+                }
+                .buttonStyle(TesseraSoftButtonStyle(cornerRadius: 7, horizontalPadding: 6, verticalPadding: 4.5))
+                .help("Hide Sidebar")
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
-            .padding(.bottom, 10)
+            .padding(.horizontal, 12)
+            .frame(height: 46)
+
+            Divider().opacity(0.55)
 
             // Search box
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                    .font(.system(size: 11.5, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                 TextField("Filter mosaics…", text: $searchText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 12.5))
+                    .font(.system(size: 12))
                 if !searchText.isEmpty {
                     Button {
                         searchText = ""
@@ -85,58 +90,68 @@ struct LayoutSidebarView: View {
                 }
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .padding(.vertical, 5.5)
+            .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
             )
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 6)
 
             // Layouts list
-            List(selection: Binding(
-                get: { appState.selectedLayoutID },
-                set: { appState.selectLayout($0) }
-            )) {
-                if !pinned.isEmpty {
-                    Section("Pinned") {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 3) {
+                    if !pinned.isEmpty {
+                        sidebarSectionHeader("PINNED")
                         ForEach(pinned) { layout in
-                            SidebarLayoutRow(layout: layout)
-                                .tag(layout.id)
+                            SidebarLayoutRow(
+                                layout: layout,
+                                isSelected: appState.selectedLayoutID == layout.id
+                            )
                         }
                     }
-                }
 
-                Section(pinned.isEmpty ? "Mosaics" : "All Mosaics") {
+                    sidebarSectionHeader(pinned.isEmpty ? "MOSAICS" : "ALL MOSAICS")
+                        .padding(.top, pinned.isEmpty ? 2 : 8)
                     ForEach(unpinned) { layout in
-                        SidebarLayoutRow(layout: layout)
-                            .tag(layout.id)
+                        SidebarLayoutRow(
+                            layout: layout,
+                            isSelected: appState.selectedLayoutID == layout.id
+                        )
                     }
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
             }
-            .listStyle(.sidebar)
 
-            Divider()
+            Divider().opacity(0.55)
 
-            // Footer: Terminal count + Update button
-            HStack(spacing: 8) {
-                HStack(spacing: 5) {
-                    Image(systemName: "terminal")
-                        .font(.system(size: 10.5, weight: .medium))
-                    Text("\(appState.installedTerminals.count) terminals")
-                        .font(.system(size: 11.5))
-                        .lineLimit(1)
-                }
-                .foregroundStyle(.secondary)
+            // Footer: Version + Terminal count + Update button
+            HStack(spacing: 6) {
+                Text("v\(TesseraMetadata.currentVersionString) · \(appState.installedTerminals.count) terminals")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
 
                 Spacer(minLength: 4)
 
                 updateFooterButton
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
         }
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.38))
+    }
+
+    private func sidebarSectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 10, weight: .semibold, design: .rounded))
+            .tracking(0.55)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
     }
 
     @ViewBuilder
@@ -208,32 +223,38 @@ struct LayoutSidebarView: View {
 private struct SidebarLayoutRow: View {
     @EnvironmentObject private var appState: AppState
     let layout: TesseraLayout
+    let isSelected: Bool
     @State private var isHovered = false
+
+    private var accent: Color {
+        Color(hex: layout.accentHex)
+    }
 
     var body: some View {
         HStack(spacing: 10) {
             ZStack {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Color(hex: layout.accentHex).opacity(0.18))
+                    .fill(accent.opacity(isSelected ? 0.24 : 0.16))
                     .frame(width: 28, height: 28)
                 Image(systemName: layout.icon)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color(hex: layout.accentHex))
+                    .foregroundStyle(accent)
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(layout.name)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 12.5, weight: isSelected ? .semibold : .medium))
+                        .foregroundStyle(.primary)
                         .lineLimit(1)
                     if layout.isPinned {
                         Image(systemName: "pin.fill")
-                            .font(.system(size: 9))
+                            .font(.system(size: 8.5))
                             .foregroundStyle(.secondary)
                     }
                     if layout.hasAnyCustomScript {
                         Image(systemName: "chevron.left.forwardslash.chevron.right")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 8.5, weight: .semibold))
                             .foregroundStyle(Color(hex: "#10B981"))
                             .help("Has custom script override")
                     }
@@ -252,16 +273,42 @@ private struct SidebarLayoutRow: View {
                     appState.launch(layout: layout)
                 } label: {
                     Image(systemName: "play.fill")
-                        .font(.system(size: 10))
+                        .font(.system(size: 9.5))
                         .foregroundStyle(.white)
                         .frame(width: 22, height: 22)
-                        .background(Color(hex: layout.accentHex), in: Circle())
+                        .background(accent, in: Circle())
+                        .shadow(color: accent.opacity(0.35), radius: 4, y: 1)
                 }
                 .buttonStyle(.plain)
+                .transition(.scale(scale: 0.75).combined(with: .opacity))
                 .help("Launch \(layout.name)")
             }
         }
-        .padding(.vertical, 3)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(
+                    isSelected
+                        ? accent.opacity(0.16)
+                        : (isHovered ? Color.primary.opacity(0.06) : Color.clear)
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .strokeBorder(
+                    isSelected ? accent.opacity(0.38) : Color.clear,
+                    lineWidth: 1
+                )
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .animation(TesseraMotion.hover, value: isHovered)
+        .animation(TesseraMotion.smooth, value: isSelected)
+        .onTapGesture {
+            withAnimation(TesseraMotion.smooth) {
+                appState.selectLayout(layout.id)
+            }
+        }
         .onHover { isHovered = $0 }
         .contextMenu {
             Button("Launch Mosaic") { appState.launch(layout: layout) }

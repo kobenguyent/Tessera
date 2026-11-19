@@ -35,6 +35,8 @@ public struct TerminalLauncher: Sendable {
                 let parent = url.deletingLastPathComponent()
                 try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
                 try fileContent.write(to: url, atomically: true, encoding: .utf8)
+                // Protect generated terminal session configs (may contain env vars) to owner-only read/write
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
             } catch {
                 return LaunchResult(
                     terminal: plan.terminal,
@@ -61,51 +63,43 @@ public struct TerminalLauncher: Sendable {
         terminal: TerminalKind,
         layoutName: String
     ) -> LaunchResult {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executablePath)
-        process.arguments = arguments
-
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-
-        let stdinPipe = Pipe()
-        if stdin != nil {
-            process.standardInput = stdinPipe
-        }
-
         do {
-            try process.run()
-            if let stdin, let data = stdin.data(using: .utf8) {
-                stdinPipe.fileHandleForWriting.write(data)
-                try? stdinPipe.fileHandleForWriting.close()
+            let result = try SubprocessRunner.run(
+                executablePath: executablePath,
+                arguments: arguments,
+                stdin: stdin,
+                timeoutSeconds: 20.0
+            )
+
+            if result.timedOut {
+                return LaunchResult(
+                    terminal: terminal,
+                    layoutName: layoutName,
+                    succeeded: false,
+                    message: "Timed out launching \(terminal.displayName). If macOS prompted for Automation permission, approve it in System Settings → Privacy & Security → Automation.",
+                    standardOutput: result.stdout,
+                    standardError: result.stderr
+                )
             }
-            process.waitUntilExit()
 
-            let outData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-            let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-            let stdout = String(data: outData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let stderr = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-            if process.terminationStatus == 0 {
+            if result.exitCode == 0 {
                 return LaunchResult(
                     terminal: terminal,
                     layoutName: layoutName,
                     succeeded: true,
                     message: "Launched \"\(layoutName)\" in \(terminal.displayName).",
-                    standardOutput: stdout,
-                    standardError: stderr
+                    standardOutput: result.stdout,
+                    standardError: result.stderr
                 )
             } else {
-                let detail = stderr.isEmpty ? "Process exited with code \(process.terminationStatus)." : stderr
+                let detail = result.stderr.isEmpty ? "Process exited with code \(result.exitCode)." : result.stderr
                 return LaunchResult(
                     terminal: terminal,
                     layoutName: layoutName,
                     succeeded: false,
                     message: "Could not launch in \(terminal.displayName): \(detail)",
-                    standardOutput: stdout,
-                    standardError: stderr
+                    standardOutput: result.stdout,
+                    standardError: result.stderr
                 )
             }
         } catch {

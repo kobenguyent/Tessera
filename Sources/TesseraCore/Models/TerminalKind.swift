@@ -67,7 +67,7 @@ public enum TerminalKind: String, Codable, CaseIterable, Identifiable, Hashable,
         case .warp: return "bolt.horizontal.circle.fill"
         case .wezterm: return "rectangle.split.3x3"
         case .kitty: return "cat.fill"
-        case .ghostty: return "sparkles.rectangle.stack"
+        case .ghostty: return "terminal.fill"
         case .alacritty: return "flame.fill"
         case .tmux: return "square.split.2x2.fill"
         }

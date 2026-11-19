@@ -6,6 +6,9 @@ final class TesseraAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Ensure standard Dock + Window presence even when launched directly via `swift run`
         NSApplication.shared.setActivationPolicy(.regular)
+        if let appIcon = TesseraAppIconRenderer.makeNSImage(pixelSize: 512) {
+            NSApplication.shared.applicationIconImage = appIcon
+        }
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 }
@@ -21,6 +24,7 @@ struct TesseraApp: App {
                 .environmentObject(appState)
                 .frame(minWidth: 1020, minHeight: 640)
         }
+        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1220, height: 760)
         .commands {
             CommandGroup(replacing: .newItem) {

@@ -5,13 +5,13 @@ import TesseraCore
 struct MenuBarView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.openWindow) private var openWindow
+    @State private var hoveredLayoutID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             // Header
-            HStack {
-                Image(systemName: "square.grid.2x2.fill")
-                    .foregroundStyle(Color(hex: "#6366F1"))
+            HStack(spacing: 7) {
+                TesseraLogoView(size: 18)
                 Text("Tessera Mosaics")
                     .font(.headline)
                 Spacer()
@@ -37,15 +37,18 @@ struct MenuBarView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "terminal")
-                            .font(.caption2)
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .foregroundStyle(.secondary)
                         Text(appState.menuBarTerminalOverride?.displayName ?? "Auto")
-                            .font(.caption)
+                            .font(.system(size: 11, weight: .medium))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 7.5, weight: .bold))
+                            .foregroundStyle(.secondary)
                     }
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(.quaternary.opacity(0.6), in: Capsule())
                 }
-                .menuStyle(.borderlessButton)
+                .menuStyle(.button)
+                .menuIndicator(.hidden)
+                .buttonStyle(TesseraSoftButtonStyle(cornerRadius: 7, horizontalPadding: 8, verticalPadding: 3.5))
                 .fixedSize()
             }
 
@@ -152,6 +155,7 @@ struct MenuBarView: View {
 
     private func menuBarLayoutButton(_ layout: TesseraLayout) -> some View {
         let effective = appState.resolvedTerminal(for: layout, override: appState.menuBarTerminalOverride)
+        let isHovered = hoveredLayoutID == layout.id
         return Button {
             appState.launch(layout: layout, terminalOverride: appState.menuBarTerminalOverride)
         } label: {
@@ -160,7 +164,7 @@ struct MenuBarView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color(hex: layout.accentHex))
                     .frame(width: 24, height: 24)
-                    .background(Color(hex: layout.accentHex).opacity(0.16), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .background(Color(hex: layout.accentHex).opacity(isHovered ? 0.24 : 0.16), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(layout.name)
@@ -175,13 +179,22 @@ struct MenuBarView: View {
                 Spacer()
 
                 Image(systemName: "play.circle.fill")
-                    .foregroundStyle(Color(hex: layout.accentHex).opacity(0.85))
+                    .foregroundStyle(Color(hex: layout.accentHex).opacity(isHovered ? 1.0 : 0.72))
+                    .scaleEffect(isHovered ? 1.08 : 1.0)
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 5)
-            .contentShape(Rectangle())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isHovered ? Color.primary.opacity(0.08) : Color.clear)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .animation(TesseraMotion.hover, value: isHovered)
         }
         .buttonStyle(.plain)
+        .onHover { hovering in
+            hoveredLayoutID = hovering ? layout.id : (hoveredLayoutID == layout.id ? nil : hoveredLayoutID)
+        }
     }
 
     private func openStudioWindow() {

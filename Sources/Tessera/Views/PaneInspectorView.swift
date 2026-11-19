@@ -6,7 +6,6 @@ struct PaneInspectorView: View {
     let layout: TesseraLayout
     let pane: PaneSpec
 
-    @State private var newCommandText = ""
     @State private var showingQuickAddLibraryPopover = false
     @State private var libraryDraftLabel = ""
     @State private var libraryDraftCommand = ""
@@ -17,28 +16,27 @@ struct PaneInspectorView: View {
             VStack(alignment: .leading, spacing: 12) {
                 // Header
                 HStack(spacing: 8) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color(hex: layout.accentHex))
                     Text("Pane Inspector")
                         .font(.system(size: 13.5, weight: .semibold, design: .rounded))
                     Spacer()
                     if let tab = appState.selectedTab, tab.root.leafCount > 1 {
                         Button(role: .destructive) {
-                            appState.removePane(pane.id)
+                            withAnimation(TesseraMotion.smooth) {
+                                appState.removePane(pane.id)
+                            }
                         } label: {
                             Image(systemName: "trash")
                                 .font(.system(size: 11.5))
                                 .foregroundStyle(.secondary)
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(TesseraIconButtonStyle(destructive: true, size: 24))
                         .help("Remove this pane")
                     }
                 }
                 .padding(.bottom, 2)
 
                 // Identity & Focus
-                InspectorSectionCard("Identity & Launch", systemImage: "square.text.square") {
+                InspectorSectionCard("Identity & Launch") {
                     VStack(alignment: .leading, spacing: 10) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Pane Title")
@@ -49,16 +47,9 @@ struct PaneInspectorView: View {
                                 .controlSize(.small)
                         }
 
-                        Toggle(isOn: focusBinding) {
-                            HStack(spacing: 5) {
-                                Image(systemName: "star.fill")
-                                    .font(.system(size: 10.5))
-                                    .foregroundStyle(pane.focus ? .yellow : .secondary)
-                                Text("Focus this pane on launch")
-                                    .font(.system(size: 12))
-                            }
-                        }
-                        .controlSize(.small)
+                        Toggle("Focus this pane on launch", isOn: focusBinding)
+                            .font(.system(size: 12))
+                            .controlSize(.small)
 
                         HStack {
                             Text("Startup Delay")
@@ -80,7 +71,7 @@ struct PaneInspectorView: View {
                 }
 
                 // Working Directory & Profile
-                InspectorSectionCard("Directory & Profile", systemImage: "folder") {
+                InspectorSectionCard("Directory & Profile") {
                     VStack(alignment: .leading, spacing: 10) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Working Directory Override")
@@ -102,11 +93,10 @@ struct PaneInspectorView: View {
                                         appState.updatePane(pane.id) { $0.workingDirectory = chosen }
                                     }
                                 } label: {
-                                    Image(systemName: "folder")
-                                        .font(.system(size: 11))
+                                    Text("Browse")
+                                        .font(.system(size: 11, weight: .medium))
                                 }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
+                                .buttonStyle(TesseraSoftButtonStyle(cornerRadius: 7, horizontalPadding: 8, verticalPadding: 4.5))
                                 .help("Browse folder")
                             }
                         }
@@ -123,108 +113,68 @@ struct PaneInspectorView: View {
                     }
                 }
 
-                // Startup Commands
-                InspectorSectionCard("Startup Commands", systemImage: "terminal") {
-                    Button {
-                        appState.showingCommandLibrarySheet = true
-                    } label: {
-                        Label("Library (\(appState.commandLibrary.count))", systemImage: "books.vertical")
-                            .font(.system(size: 10.5, weight: .medium))
+                // Startup Commands (Multi-line native terminal command editor)
+                InspectorSectionCard("Startup Commands") {
+                    HStack(spacing: 5) {
+                        Button {
+                            let prefill = pane.nonEmptyCommands.last ?? ""
+                            openQuickSavePopover(prefillCommand: prefill)
+                        } label: {
+                            Text("Save")
+                                .font(.system(size: 10.5, weight: .medium))
+                        }
+                        .buttonStyle(TesseraSoftButtonStyle(cornerRadius: 7, horizontalPadding: 7, verticalPadding: 3.5))
+                        .help("Save command to your Command Library")
+                        .popover(isPresented: $showingQuickAddLibraryPopover) {
+                            quickAddLibraryPopover
+                        }
+
+                        Button {
+                            appState.showingCommandLibrarySheet = true
+                        } label: {
+                            Text("Library (\(appState.commandLibrary.count))")
+                                .font(.system(size: 10.5, weight: .medium))
+                        }
+                        .buttonStyle(TesseraSoftButtonStyle(cornerRadius: 7, horizontalPadding: 7, verticalPadding: 3.5))
+                        .help("Browse and organize reusable custom commands (⇧⌘L)")
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
-                    .help("Browse, add, and organize reusable custom commands (⇧⌘L)")
                 } content: {
                     VStack(alignment: .leading, spacing: 8) {
-                        if pane.commands.isEmpty {
-                            Text("No startup commands yet — pane opens an interactive shell.")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ForEach(Array(pane.commands.enumerated()), id: \.offset) { index, cmdText in
-                                HStack(spacing: 6) {
-                                    Text("$")
-                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                        .foregroundStyle(Color(hex: layout.accentHex))
-                                    TextField("Command", text: commandBinding(at: index))
-                                        .font(.system(size: 11.5, design: .monospaced))
-                                        .textFieldStyle(.roundedBorder)
-                                        .controlSize(.small)
+                        PaneCommandEditorView(
+                            commands: commandsBinding,
+                            accentHex: layout.accentHex,
+                            placeholder: "One command per line (e.g. npm run dev)…",
+                            fontSize: 11.5,
+                            darkSurface: false
+                        )
+                        .frame(minHeight: 74, maxHeight: 140)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color(nsColor: .textBackgroundColor).opacity(0.65))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+                        )
 
-                                    let alreadySaved = appState.isCommandInLibrary(cmdText)
-                                    Button {
-                                        openQuickSavePopover(prefillCommand: cmdText)
-                                    } label: {
-                                        Image(systemName: alreadySaved ? "bookmark.fill" : "bookmark")
-                                            .font(.system(size: 11))
-                                            .foregroundStyle(alreadySaved ? Color(hex: "#A855F7") : .secondary)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .disabled(cmdText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                                    .help(alreadySaved ? "Already in Command Library (click to save another copy)" : "Save this command to your Command Library")
-
-                                    Button {
-                                        appState.updatePane(pane.id) { p in
-                                            guard p.commands.indices.contains(index) else { return }
-                                            p.commands.remove(at: index)
-                                        }
-                                    } label: {
-                                        Image(systemName: "minus.circle.fill")
-                                            .font(.system(size: 11.5))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-
-                        HStack(spacing: 6) {
-                            TextField("Add command (e.g. npm run dev)", text: $newCommandText)
-                                .font(.system(size: 11.5, design: .monospaced))
-                                .textFieldStyle(.roundedBorder)
-                                .controlSize(.small)
-                                .onSubmit { appendCommand() }
-
-                            Button("Add") { appendCommand() }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .disabled(newCommandText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                            Button {
-                                openQuickSavePopover(prefillCommand: newCommandText)
-                            } label: {
-                                Image(systemName: "bookmark.circle")
-                                    .font(.system(size: 12.5))
-                            }
-                            .buttonStyle(.borderless)
-                            .help("Add custom command to Library")
-                            .popover(isPresented: $showingQuickAddLibraryPopover) {
-                                quickAddLibraryPopover
-                            }
-                        }
-
-                        // Reusable Command Library Chips
+                        // Quick-Insert Command Library Chips
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 5) {
                                 ForEach(appState.commandLibrary) { snippet in
                                     Button {
-                                        appState.updatePane(pane.id) { $0.commands.append(snippet.command) }
+                                        appendLibraryCommand(snippet.command)
                                     } label: {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: snippet.category.symbolName)
-                                                .font(.system(size: 8.5))
-                                                .foregroundStyle(Color(hex: snippet.category.accentHex))
-                                            Text(snippet.label)
-                                                .lineLimit(1)
-                                        }
+                                        Text(snippet.label)
+                                            .lineLimit(1)
                                     }
-                                    .font(.system(size: 10.5))
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.mini)
+                                    .font(.system(size: 10.5, weight: .medium))
+                                    .buttonStyle(TesseraChipButtonStyle())
                                     .help("$ \(snippet.command)")
                                     .contextMenu {
                                         Button("Insert into Pane") {
-                                            appState.updatePane(pane.id) { $0.commands.append(snippet.command) }
+                                            appendLibraryCommand(snippet.command)
                                         }
                                         Button("Manage Command Library…") {
                                             appState.showingCommandLibrarySheet = true
@@ -237,14 +187,12 @@ struct PaneInspectorView: View {
                                 }
 
                                 Button {
-                                    openQuickSavePopover(prefillCommand: newCommandText)
+                                    openQuickSavePopover(prefillCommand: pane.nonEmptyCommands.last ?? "")
                                 } label: {
-                                    Label("New…", systemImage: "plus")
+                                    Text("+ New")
                                 }
                                 .font(.system(size: 10.5, weight: .semibold))
-                                .buttonStyle(.borderedProminent)
-                                .tint(Color(hex: layout.accentHex))
-                                .controlSize(.mini)
+                                .buttonStyle(TesseraChipButtonStyle(tint: Color(hex: layout.accentHex)))
                                 .help("Add a new custom command to your library")
                             }
                             .padding(.vertical, 2)
@@ -253,17 +201,18 @@ struct PaneInspectorView: View {
                 }
 
                 // Environment Variables
-                InspectorSectionCard("Environment Variables", systemImage: "list.bullet.rectangle") {
+                InspectorSectionCard("Environment Variables") {
                     Button {
-                        appState.updatePane(pane.id) { p in
-                            p.environment.append(EnvEntry(key: "NODE_ENV", value: "development"))
+                        withAnimation(TesseraMotion.smooth) {
+                            appState.updatePane(pane.id) { p in
+                                p.environment.append(EnvEntry(key: "NODE_ENV", value: "development"))
+                            }
                         }
                     } label: {
-                        Label("Add", systemImage: "plus")
+                        Text("+ Add")
                             .font(.system(size: 10.5, weight: .medium))
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
+                    .buttonStyle(TesseraSoftButtonStyle(cornerRadius: 7, horizontalPadding: 7, verticalPadding: 3.5))
                 } content: {
                     VStack(alignment: .leading, spacing: 6) {
                         if pane.environment.isEmpty {
@@ -286,15 +235,17 @@ struct PaneInspectorView: View {
                                         .textFieldStyle(.roundedBorder)
                                         .controlSize(.small)
                                     Button {
-                                        appState.updatePane(pane.id) { p in
-                                            p.environment.removeAll(where: { $0.id == entry.id })
+                                        withAnimation(TesseraMotion.smooth) {
+                                            appState.updatePane(pane.id) { p in
+                                                p.environment.removeAll(where: { $0.id == entry.id })
+                                            }
                                         }
                                     } label: {
-                                        Image(systemName: "minus.circle.fill")
-                                            .font(.system(size: 11.5))
+                                        Image(systemName: "xmark")
+                                            .font(.system(size: 9.5, weight: .bold))
                                             .foregroundStyle(.secondary)
                                     }
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(TesseraIconButtonStyle(destructive: true, size: 20))
                                 }
                             }
                         }
@@ -302,27 +253,29 @@ struct PaneInspectorView: View {
                 }
 
                 // Split Actions
-                InspectorSectionCard("Split This Pane", systemImage: "rectangle.split.2x1") {
+                InspectorSectionCard("Split This Pane") {
                     HStack(spacing: 8) {
                         Button {
-                            appState.splitPane(pane.id, direction: .columns)
+                            withAnimation(TesseraMotion.smooth) {
+                                appState.splitPane(pane.id, direction: .columns)
+                            }
                         } label: {
                             Label("Left | Right", systemImage: "rectangle.split.2x1")
                                 .font(.system(size: 11.5, weight: .medium))
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .buttonStyle(TesseraSoftButtonStyle(cornerRadius: 8, horizontalPadding: 8, verticalPadding: 6))
 
                         Button {
-                            appState.splitPane(pane.id, direction: .rows)
+                            withAnimation(TesseraMotion.smooth) {
+                                appState.splitPane(pane.id, direction: .rows)
+                            }
                         } label: {
                             Label("Top / Bottom", systemImage: "rectangle.split.1x2")
                                 .font(.system(size: 11.5, weight: .medium))
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .buttonStyle(TesseraSoftButtonStyle(cornerRadius: 8, horizontalPadding: 8, verticalPadding: 6))
                     }
                 }
             }
@@ -331,11 +284,25 @@ struct PaneInspectorView: View {
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.32))
     }
 
-    private func appendCommand() {
-        let trimmed = newCommandText.trimmingCharacters(in: .whitespacesAndNewlines)
+    private var commandsBinding: Binding<[String]> {
+        Binding(
+            get: { pane.commands },
+            set: { updated in
+                appState.updatePane(pane.id) { $0.commands = updated }
+            }
+        )
+    }
+
+    private func appendLibraryCommand(_ command: String) {
+        let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        appState.updatePane(pane.id) { $0.commands.append(trimmed) }
-        newCommandText = ""
+        withAnimation(TesseraMotion.smooth) {
+            appState.updatePane(pane.id) { p in
+                var cleaned = p.commands.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                cleaned.append(trimmed)
+                p.commands = cleaned
+            }
+        }
     }
 
     private func openQuickSavePopover(prefillCommand: String) {

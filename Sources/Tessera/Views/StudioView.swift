@@ -5,25 +5,27 @@ struct StudioView: View {
     @EnvironmentObject private var appState: AppState
 
     @State private var dismissedBannerVersion: SemanticVersion?
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var showingSidebar = true
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            NavigationSplitView(columnVisibility: $columnVisibility) {
-                LayoutSidebarView()
-                    .navigationSplitViewColumnWidth(min: 245, ideal: 268, max: 320)
-            } detail: {
+            HStack(spacing: 0) {
+                if showingSidebar {
+                    LayoutSidebarView(showingSidebar: $showingSidebar)
+                        .frame(width: 260)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                    Divider().opacity(0.6)
+                }
+
                 VStack(spacing: 0) {
-                    // Non-intrusive GitHub Release Update Banner scoped inside detail column
-                    // so it never pushes the macOS sidebar glass container below the titlebar
                     if let release = appState.updateState.availableRelease,
                        dismissedBannerVersion != release.version {
                         updateBanner(release: release)
-                        Divider()
+                        Divider().opacity(0.6)
                     }
 
                     if let layout = appState.selectedLayout {
-                        LayoutWorkspaceView(layout: layout)
+                        LayoutWorkspaceView(layout: layout, showingSidebar: $showingSidebar)
                     } else {
                         ContentUnavailableView {
                             Label("No Mosaic Selected", systemImage: "square.grid.2x2")
@@ -33,11 +35,14 @@ struct StudioView: View {
                             Button("Create New Mosaic") {
                                 appState.createNewLayout()
                             }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(TesseraProminentButtonStyle())
                         }
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .ignoresSafeArea(.container, edges: .top)
+            .animation(TesseraMotion.smooth, value: showingSidebar)
 
             // Floating Launch / Status Toast
             if let toast = appState.toast {
@@ -82,9 +87,9 @@ struct StudioView: View {
 
     private func updateBanner(release: UpdateRelease) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Color(hex: "#10B981"))
+            Circle()
+                .fill(Color(hex: "#10B981"))
+                .frame(width: 7, height: 7)
             Text("Tessera **\(release.version.tagString)** is available on GitHub Releases")
                 .font(.system(size: 12.5))
                 .lineLimit(1)
@@ -98,22 +103,20 @@ struct StudioView: View {
             Button("Details & Install") {
                 appState.showingUpdateSheet = true
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Color(hex: "#10B981"))
-            .controlSize(.small)
+            .font(.system(size: 11.5, weight: .semibold))
+            .buttonStyle(TesseraProminentButtonStyle(tint: Color(hex: "#10B981"), cornerRadius: 7, horizontalPadding: 10, verticalPadding: 4.5))
             .fixedSize()
 
             Button {
-                withAnimation(.easeInOut(duration: 0.15)) {
+                withAnimation(TesseraMotion.smooth) {
                     dismissedBannerVersion = release.version
                 }
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 20, height: 20)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(TesseraIconButtonStyle(size: 22))
             .help("Dismiss banner")
         }
         .padding(.horizontal, 18)

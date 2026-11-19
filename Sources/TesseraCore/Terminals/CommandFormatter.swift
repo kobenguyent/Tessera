@@ -1,9 +1,14 @@
 import Foundation
 
 public enum CommandFormatter {
+    /// Strips NUL bytes that could truncate C strings or corrupt shell/script literals.
+    private static func stripNul(_ value: String) -> String {
+        value.replacingOccurrences(of: "\0", with: "")
+    }
+
     /// Expands a leading `~` to the user's home directory.
     public static func expandTilde(_ path: String, homeDirectory: String = NSHomeDirectory()) -> String {
-        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = stripNul(path).trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed == "~" {
             return homeDirectory
         }
@@ -13,16 +18,16 @@ public enum CommandFormatter {
         return trimmed
     }
 
-    /// Wraps a string in POSIX single quotes, safely escaping embedded single quotes.
+    /// Wraps a string in POSIX single quotes, safely escaping embedded single quotes and stripping NUL bytes.
     public static func shellSingleQuote(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        "'" + stripNul(value).replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     /// Escapes a string for embedding inside an AppleScript double-quoted literal.
     public static func appleScriptString(_ value: String) -> String {
         var escaped = ""
         escaped.reserveCapacity(value.count + 8)
-        for scalar in value.unicodeScalars {
+        for scalar in stripNul(value).unicodeScalars {
             switch scalar {
             case "\\": escaped.append("\\\\")
             case "\"": escaped.append("\\\"")
@@ -39,7 +44,7 @@ public enum CommandFormatter {
     public static func yamlDoubleQuote(_ value: String) -> String {
         var escaped = ""
         escaped.reserveCapacity(value.count + 8)
-        for scalar in value.unicodeScalars {
+        for scalar in stripNul(value).unicodeScalars {
             switch scalar {
             case "\\": escaped.append("\\\\")
             case "\"": escaped.append("\\\"")
@@ -52,13 +57,17 @@ public enum CommandFormatter {
         return "\"" + escaped + "\""
     }
 
-    /// Validates POSIX shell environment variable names.
+    /// Validates strict ASCII POSIX shell environment variable names (`^[A-Za-z_][A-Za-z0-9_]*$`).
     public static func isValidEnvKey(_ key: String) -> Bool {
         guard let first = key.unicodeScalars.first else { return false }
-        let startSet = CharacterSet.letters.union(CharacterSet(charactersIn: "_"))
-        let bodySet = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_"))
-        guard startSet.contains(first) else { return false }
-        return key.unicodeScalars.dropFirst().allSatisfy { bodySet.contains($0) }
+        func isASCIIAlpha(_ s: Unicode.Scalar) -> Bool {
+            (s.value >= 65 && s.value <= 90) || (s.value >= 97 && s.value <= 122) || s.value == 95
+        }
+        func isASCIIAlnum(_ s: Unicode.Scalar) -> Bool {
+            isASCIIAlpha(s) || (s.value >= 48 && s.value <= 57)
+        }
+        guard isASCIIAlpha(first) else { return false }
+        return key.unicodeScalars.dropFirst().allSatisfy(isASCIIAlnum)
     }
 
     /// Formats a `cd` command for the given working directory, preserving `$HOME` expansion for `~`.

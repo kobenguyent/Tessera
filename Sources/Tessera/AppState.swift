@@ -90,6 +90,7 @@ final class AppState: ObservableObject {
     private let updateService: UpdateService
     private var periodicUpdateTask: Task<Void, Never>?
     private var toastDismissTask: Task<Void, Never>?
+    private var debouncedSaveTask: Task<Void, Never>?
 
     init(
         layoutStore: LayoutStore = LayoutStore(),
@@ -116,6 +117,7 @@ final class AppState: ObservableObject {
     deinit {
         periodicUpdateTask?.cancel()
         toastDismissTask?.cancel()
+        debouncedSaveTask?.cancel()
     }
 
     // MARK: - Derived Selections
@@ -163,7 +165,12 @@ final class AppState: ObservableObject {
 
     func loadLayouts() {
         do {
-            layouts = try layoutStore.loadLayouts()
+            let loaded = try layoutStore.loadLayouts()
+            let sanitized = Self.sanitizeLegacyBuiltInPresets(loaded)
+            layouts = sanitized
+            if sanitized != loaded {
+                try? layoutStore.saveLayouts(sanitized)
+            }
         } catch {
             layouts = BuiltInPresets.makeDefaultLayouts()
             showToast("Loaded built-in presets", subtitle: error.localizedDescription, isError: true)
@@ -171,11 +178,57 @@ final class AppState: ObservableObject {
         selectLayout(layouts.first?.id)
     }
 
+    private static func sanitizeLegacyBuiltInPresets(_ layouts: [TesseraLayout]) -> [TesseraLayout] {
+        layouts.map { layout in
+            var updated = layout
+            if updated.name == "AI & Agent Cockpit" || updated.icon == "sparkles" {
+                updated.name = "Three-Lane Workbench"
+                updated.subtitle = "Three vertical lanes for shell, build verification, and git status"
+                updated.icon = "rectangle.split.3x1.fill"
+            }
+            if updated.name == "Tessera Quad Mosaic" {
+                updated.name = "Quad Mosaic"
+            }
+            for tIdx in updated.tabs.indices {
+                if updated.tabs[tIdx].title == "Cockpit" {
+                    updated.tabs[tIdx].title = "Workbench"
+                }
+                for pane in updated.tabs[tIdx].root.allLeaves {
+                    if pane.commands.contains(where: { $0.contains("✦") }) || pane.title == "Agent Session" {
+                        updated.tabs[tIdx].root = updated.tabs[tIdx].root.updating(leafID: pane.id) { p in
+                            if p.title == "Agent Session" { p.title = "Primary Shell" }
+                            if p.title == "Build & Verify" { p.title = "Build & Test" }
+                            p.commands = p.commands.compactMap { cmd in
+                                guard cmd.contains("✦") else { return cmd }
+                                if cmd.contains("npm run dev") { return "npm run dev" }
+                                if cmd.contains("docker ps") { return "docker ps" }
+                                if cmd.contains("Agent Coordinator") { return "pwd && ls -la" }
+                                return nil
+                            }
+                        }
+                    }
+                }
+            }
+            return updated
+        }
+    }
+
     func saveLayouts() {
+        debouncedSaveTask?.cancel()
+        debouncedSaveTask = nil
         do {
             try layoutStore.saveLayouts(layouts)
         } catch {
             showToast("Failed to save layouts", subtitle: error.localizedDescription, isError: true)
+        }
+    }
+
+    func scheduleSaveLayouts() {
+        debouncedSaveTask?.cancel()
+        debouncedSaveTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            self?.saveLayouts()
         }
     }
 
@@ -398,19 +451,27 @@ final class AppState: ObservableObject {
         showToast("Restored built-in presets")
     }
 
-    func mutateSelectedLayout(_ transform: (inout TesseraLayout) -> Void) {
+    func mutateSelectedLayout(persistImmediately: Bool = true, _ transform: (inout TesseraLayout) -> Void) {
         guard let idx = selectedLayoutIndex else { return }
         transform(&layouts[idx])
         layouts[idx].updatedAt = Date()
-        saveLayouts()
+        if persistImmediately {
+            saveLayouts()
+        } else {
+            scheduleSaveLayouts()
+        }
     }
 
-    func mutateSelectedTab(_ transform: (inout TesseraTab) -> Void) {
+    func mutateSelectedTab(persistImmediately: Bool = true, _ transform: (inout TesseraTab) -> Void) {
         guard let layoutIdx = selectedLayoutIndex,
               let tabIdx = selectedTabIndex else { return }
         transform(&layouts[layoutIdx].tabs[tabIdx])
         layouts[layoutIdx].updatedAt = Date()
-        saveLayouts()
+        if persistImmediately {
+            saveLayouts()
+        } else {
+            scheduleSaveLayouts()
+        }
     }
 
     // MARK: - Tab & Pane Operations
@@ -467,8 +528,8 @@ final class AppState: ObservableObject {
         }
     }
 
-    func updatePane(_ paneID: UUID, transform: (inout PaneSpec) -> Void) {
-        mutateSelectedTab { tab in
+    func updatePane(_ paneID: UUID, persistImmediately: Bool = false, transform: (inout PaneSpec) -> Void) {
+        mutateSelectedTab(persistImmediately: persistImmediately) { tab in
             tab.root = tab.root.updating(leafID: paneID, transform: transform)
         }
     }
@@ -479,8 +540,8 @@ final class AppState: ObservableObject {
         }
     }
 
-    func updateSplitRatio(splitID: UUID, ratio: Double) {
-        mutateSelectedTab { tab in
+    func updateSplitRatio(splitID: UUID, ratio: Double, persistImmediately: Bool = false) {
+        mutateSelectedTab(persistImmediately: persistImmediately) { tab in
             tab.root = tab.root.updatingRatio(splitID: splitID, ratio: ratio)
         }
     }

@@ -121,7 +121,7 @@ public enum BuiltInPresets {
         [
             fullStackFoundry(),
             quadMosaic(),
-            aiAgentCockpit(),
+            threeLaneWorkbench(),
             devOpsCommandDeck(),
             dualFocusPair(),
             multiTabStudio()
@@ -142,11 +142,11 @@ public enum BuiltInPresets {
                 ratio: 0.5,
                 first: .leaf(PaneSpec(
                     title: "Frontend Dev",
-                    commands: ["echo '✦ Tessera Frontend Pane — set your dev server command (e.g. npm run dev)'"]
+                    commands: ["npm run dev"]
                 )),
                 second: .leaf(PaneSpec(
                     title: "API & Watcher",
-                    commands: ["echo '✦ Tessera API Pane — ready for backend & logs'"],
+                    commands: ["swift test"],
                     delaySeconds: 0.5
                 ))
             ))
@@ -155,7 +155,7 @@ public enum BuiltInPresets {
         return TesseraLayout(
             id: UUID(uuidString: "10000000-0000-4000-8000-000000000001")!,
             name: "Full-Stack Foundry",
-            subtitle: "Wide primary workbench paired with stacked Frontend & API panes",
+            subtitle: "Primary workspace paired with stacked Frontend and API panes",
             icon: "hammer.fill",
             accentHex: "#6366F1",
             workingDirectory: "~",
@@ -181,7 +181,7 @@ public enum BuiltInPresets {
                 )),
                 second: .leaf(PaneSpec(
                     title: "Test Runner",
-                    commands: ["echo '✦ Ready for watch tests (swift test / vitest / pytest)'"]
+                    commands: []
                 ))
             )),
             second: .split(SplitSpec(
@@ -193,15 +193,15 @@ public enum BuiltInPresets {
                 )),
                 second: .leaf(PaneSpec(
                     title: "Git Workbench",
-                    commands: ["git log -n 5 --oneline 2>/dev/null || echo 'Not a git repository'"]
+                    commands: ["git log -n 5 --oneline 2>/dev/null || pwd"]
                 ))
             ))
         ))
 
         return TesseraLayout(
             id: UUID(uuidString: "10000000-0000-4000-8000-000000000002")!,
-            name: "Tessera Quad Mosaic",
-            subtitle: "Signature 2×2 balanced terminal grid for parallel workflows",
+            name: "Quad Mosaic",
+            subtitle: "Balanced 2×2 terminal grid for parallel workflows",
             icon: "square.grid.2x2.fill",
             accentHex: "#10B981",
             workingDirectory: "~",
@@ -213,21 +213,21 @@ public enum BuiltInPresets {
         )
     }
 
-    public static func aiAgentCockpit() -> TesseraLayout {
+    public static func threeLaneWorkbench() -> TesseraLayout {
         let root = PaneNode.split(SplitSpec(
             direction: .columns,
             ratio: 0.36,
             first: .leaf(PaneSpec(
-                title: "Agent Session",
-                commands: ["echo '✦ Agent Coordinator Ready'"],
+                title: "Primary Shell",
+                commands: ["pwd && ls -la"],
                 focus: true
             )),
             second: .split(SplitSpec(
                 direction: .columns,
                 ratio: 0.5,
                 first: .leaf(PaneSpec(
-                    title: "Build & Verify",
-                    commands: ["echo '✦ Build & Test Runner Ready'"]
+                    title: "Build & Test",
+                    commands: []
                 )),
                 second: .leaf(PaneSpec(
                     title: "Git Diff & Status",
@@ -238,14 +238,14 @@ public enum BuiltInPresets {
 
         return TesseraLayout(
             id: UUID(uuidString: "10000000-0000-4000-8000-000000000003")!,
-            name: "AI & Agent Cockpit",
-            subtitle: "Three vertical lanes for agent orchestration, verification & diffs",
-            icon: "sparkles",
+            name: "Three-Lane Workbench",
+            subtitle: "Three vertical lanes for shell, build verification, and git status",
+            icon: "rectangle.split.3x1.fill",
             accentHex: "#A855F7",
             workingDirectory: "~",
             windowFrame: .maximized,
-            tabs: [TesseraTab(title: "Cockpit", root: root)],
-            tags: ["ai", "agents", "columns"],
+            tabs: [TesseraTab(title: "Workbench", root: root)],
+            tags: ["dev", "columns"],
             isPinned: true,
             isBuiltIn: true
         )
@@ -265,18 +265,18 @@ public enum BuiltInPresets {
                 ratio: 0.34,
                 first: .leaf(PaneSpec(
                     title: "Containers",
-                    commands: ["echo '✦ docker ps / kubectl get pods'"]
+                    commands: ["docker ps"]
                 )),
                 second: .split(SplitSpec(
                     direction: .columns,
                     ratio: 0.5,
                     first: .leaf(PaneSpec(
                         title: "Live Logs",
-                        commands: ["echo '✦ Tail application logs here'"]
+                        commands: []
                     )),
                     second: .leaf(PaneSpec(
                         title: "Ops Shell",
-                        commands: ["echo '✦ Ad-hoc ops commands'"]
+                        commands: []
                     ))
                 ))
             ))
@@ -285,7 +285,7 @@ public enum BuiltInPresets {
         return TesseraLayout(
             id: UUID(uuidString: "10000000-0000-4000-8000-000000000004")!,
             name: "DevOps Command Deck",
-            subtitle: "Panoramic header pane above three operational telemetry columns",
+            subtitle: "Top overview pane above three operational columns",
             icon: "server.rack",
             accentHex: "#F59E0B",
             workingDirectory: "~",
@@ -315,7 +315,7 @@ public enum BuiltInPresets {
         return TesseraLayout(
             id: UUID(uuidString: "10000000-0000-4000-8000-000000000005")!,
             name: "Dual Focus Pair",
-            subtitle: "Clean 50/50 side-by-side split for distraction-free pairing",
+            subtitle: "Clean 50/50 side-by-side split",
             icon: "rectangle.split.2x1.fill",
             accentHex: "#0EA5E9",
             workingDirectory: "~",
@@ -340,7 +340,7 @@ public enum BuiltInPresets {
                 )),
                 second: .leaf(PaneSpec(
                     title: "Tests",
-                    commands: ["echo '✦ Continuous test suite pane'"]
+                    commands: []
                 ))
             ))
         )
@@ -352,11 +352,11 @@ public enum BuiltInPresets {
                 ratio: 0.5,
                 first: .leaf(PaneSpec(
                     title: "Database / Cache",
-                    commands: ["echo '✦ Local data services pane'"]
+                    commands: []
                 )),
                 second: .leaf(PaneSpec(
                     title: "API Proxy",
-                    commands: ["echo '✦ Reverse proxy / tunnel pane'"]
+                    commands: []
                 ))
             ))
         )
@@ -364,7 +364,7 @@ public enum BuiltInPresets {
         return TesseraLayout(
             id: UUID(uuidString: "10000000-0000-4000-8000-000000000006")!,
             name: "Multi-Tab Studio",
-            subtitle: "Two coordinated tabs: Build workspace + Services stack",
+            subtitle: "Two tabs: Build workspace and Services stack",
             icon: "macwindow.on.rectangle",
             accentHex: "#EC4899",
             workingDirectory: "~",

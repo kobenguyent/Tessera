@@ -1,5 +1,12 @@
 import SwiftUI
 
+enum TesseraMotion {
+    static let hover = Animation.easeOut(duration: 0.14)
+    static let press = Animation.spring(response: 0.22, dampingFraction: 0.78)
+    static let smooth = Animation.spring(response: 0.28, dampingFraction: 0.84)
+    static let gentle = Animation.easeInOut(duration: 0.20)
+}
+
 public enum TesseraPalette {
     public static let accents: [(name: String, hex: String)] = [
         ("Indigo", "#6366F1"),
@@ -15,7 +22,6 @@ public enum TesseraPalette {
     public static let icons: [String] = [
         "square.grid.2x2.fill",
         "hammer.fill",
-        "sparkles",
         "server.rack",
         "terminal.fill",
         "rectangle.split.2x1.fill",
@@ -93,14 +99,9 @@ struct InspectorSectionCard<HeaderAccessory: View, Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
-                if let systemImage {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 10.5, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
                 Text(title.uppercased())
                     .font(.system(size: 10.5, weight: .semibold, design: .rounded))
-                    .tracking(0.5)
+                    .tracking(0.55)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 4)
                 accessory()
@@ -111,13 +112,229 @@ struct InspectorSectionCard<HeaderAccessory: View, Content: View>: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.primary.opacity(0.035))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.075), lineWidth: 1)
         )
+    }
+}
+
+/// Soft, continuous-corner secondary button & dropdown style with smooth hover and spring press.
+struct TesseraSoftButtonStyle: ButtonStyle {
+    var tint: Color? = nil
+    var isActive: Bool = false
+    var cornerRadius: CGFloat = 8
+    var horizontalPadding: CGFloat = 9
+    var verticalPadding: CGFloat = 5
+
+    func makeBody(configuration: Configuration) -> some View {
+        TesseraSoftButtonBody(
+            configuration: configuration,
+            tint: tint,
+            isActive: isActive,
+            cornerRadius: cornerRadius,
+            horizontalPadding: horizontalPadding,
+            verticalPadding: verticalPadding
+        )
+    }
+
+    private struct TesseraSoftButtonBody: View {
+        let configuration: Configuration
+        let tint: Color?
+        let isActive: Bool
+        let cornerRadius: CGFloat
+        let horizontalPadding: CGFloat
+        let verticalPadding: CGFloat
+
+        @State private var isHovered = false
+        @Environment(\.isEnabled) private var isEnabled
+
+        private var fillColor: Color {
+            if let tint, isActive {
+                return tint.opacity(configuration.isPressed ? 0.26 : (isHovered ? 0.22 : 0.16))
+            }
+            if configuration.isPressed {
+                return Color.primary.opacity(0.13)
+            }
+            if isHovered {
+                return Color.primary.opacity(0.095)
+            }
+            return Color.primary.opacity(0.055)
+        }
+
+        private var borderColor: Color {
+            if let tint, isActive {
+                return tint.opacity(isHovered ? 0.55 : 0.38)
+            }
+            return Color.primary.opacity(isHovered ? 0.18 : 0.10)
+        }
+
+        var body: some View {
+            configuration.label
+                .padding(.horizontal, horizontalPadding)
+                .padding(.vertical, verticalPadding)
+                .background(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(fillColor)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(borderColor, lineWidth: 1)
+                )
+                .scaleEffect(configuration.isPressed ? 0.965 : 1.0)
+                .opacity(isEnabled ? 1.0 : 0.45)
+                .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .animation(TesseraMotion.hover, value: isHovered)
+                .animation(TesseraMotion.press, value: configuration.isPressed)
+                .onHover { isHovered = $0 }
+        }
+    }
+}
+
+/// Tactile primary CTA button with top-lit sheen, soft hover glow, and spring press.
+struct TesseraProminentButtonStyle: ButtonStyle {
+    var tint: Color = Color(hex: "#6366F1")
+    var cornerRadius: CGFloat = 8
+    var horizontalPadding: CGFloat = 11
+    var verticalPadding: CGFloat = 5.5
+
+    func makeBody(configuration: Configuration) -> some View {
+        TesseraProminentButtonBody(
+            configuration: configuration,
+            tint: tint,
+            cornerRadius: cornerRadius,
+            horizontalPadding: horizontalPadding,
+            verticalPadding: verticalPadding
+        )
+    }
+
+    private struct TesseraProminentButtonBody: View {
+        let configuration: Configuration
+        let tint: Color
+        let cornerRadius: CGFloat
+        let horizontalPadding: CGFloat
+        let verticalPadding: CGFloat
+
+        @State private var isHovered = false
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            configuration.label
+                .foregroundStyle(.white)
+                .padding(.horizontal, horizontalPadding)
+                .padding(.vertical, verticalPadding)
+                .background(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(tint.opacity(configuration.isPressed ? 0.84 : (isHovered ? 1.0 : 0.92)))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [.white.opacity(isHovered ? 0.22 : 0.14), .clear],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                )
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(.white.opacity(isHovered ? 0.30 : 0.18), lineWidth: 0.75)
+                )
+                .shadow(
+                    color: isEnabled ? tint.opacity(isHovered ? 0.36 : 0.18) : .clear,
+                    radius: isHovered ? 8 : 4,
+                    y: 2
+                )
+                .scaleEffect(configuration.isPressed ? 0.965 : 1.0)
+                .opacity(isEnabled ? 1.0 : 0.45)
+                .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .animation(TesseraMotion.hover, value: isHovered)
+                .animation(TesseraMotion.press, value: configuration.isPressed)
+                .onHover { isHovered = $0 }
+        }
+    }
+}
+
+/// Soft pill chip button for quick-insert commands and compact controls.
+struct TesseraChipButtonStyle: ButtonStyle {
+    var tint: Color? = nil
+
+    func makeBody(configuration: Configuration) -> some View {
+        TesseraChipBody(configuration: configuration, tint: tint)
+    }
+
+    private struct TesseraChipBody: View {
+        let configuration: Configuration
+        let tint: Color?
+        @State private var isHovered = false
+
+        var body: some View {
+            configuration.label
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule()
+                        .fill(
+                            tint != nil
+                                ? tint!.opacity(configuration.isPressed ? 0.82 : (isHovered ? 1.0 : 0.90))
+                                : Color.primary.opacity(configuration.isPressed ? 0.14 : (isHovered ? 0.10 : 0.055))
+                        )
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(
+                            tint != nil ? .white.opacity(0.22) : Color.primary.opacity(isHovered ? 0.18 : 0.09),
+                            lineWidth: 0.85
+                        )
+                )
+                .foregroundStyle(tint != nil ? Color.white : Color.primary)
+                .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+                .contentShape(Capsule())
+                .animation(TesseraMotion.hover, value: isHovered)
+                .animation(TesseraMotion.press, value: configuration.isPressed)
+                .onHover { isHovered = $0 }
+        }
+    }
+}
+
+/// Soft translucent icon-only button for subtle chrome actions.
+struct TesseraIconButtonStyle: ButtonStyle {
+    var destructive: Bool = false
+    var size: CGFloat = 24
+
+    func makeBody(configuration: Configuration) -> some View {
+        TesseraIconBody(configuration: configuration, destructive: destructive, size: size)
+    }
+
+    private struct TesseraIconBody: View {
+        let configuration: Configuration
+        let destructive: Bool
+        let size: CGFloat
+        @State private var isHovered = false
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            configuration.label
+                .frame(width: size, height: size)
+                .background(
+                    RoundedRectangle(cornerRadius: 6.5, style: .continuous)
+                        .fill(
+                            isHovered
+                                ? (destructive ? Color.red.opacity(0.16) : Color.primary.opacity(0.09))
+                                : Color.clear
+                        )
+                )
+                .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
+                .opacity(isEnabled ? 1.0 : 0.4)
+                .contentShape(RoundedRectangle(cornerRadius: 6.5, style: .continuous))
+                .animation(TesseraMotion.hover, value: isHovered)
+                .animation(TesseraMotion.press, value: configuration.isPressed)
+                .onHover { isHovered = $0 }
+        }
     }
 }
 

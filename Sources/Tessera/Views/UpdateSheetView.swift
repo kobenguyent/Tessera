@@ -187,7 +187,7 @@ struct UpdateSheetView: View {
                 Image(systemName: "arrow.right")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                PillBadge(text: update.version.tagString, systemImage: "sparkles", tint: Color(hex: "#10B981"))
+                PillBadge(text: update.version.tagString, tint: Color(hex: "#10B981"))
 
                 if update.release.isPrerelease {
                     PillBadge(text: "Pre-release", tint: .orange)

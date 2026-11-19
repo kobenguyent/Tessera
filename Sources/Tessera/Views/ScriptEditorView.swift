@@ -169,8 +169,7 @@ struct ScriptEditorView: View {
                 }
                 .font(.caption.weight(.medium))
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
+            .buttonStyle(TesseraSoftButtonStyle(cornerRadius: 7, horizontalPadding: 8, verticalPadding: 4.5))
             .disabled(isValidating)
             .help("Check script syntax without executing")
 
@@ -178,43 +177,48 @@ struct ScriptEditorView: View {
             Button {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(currentText, forType: .string)
-                copied = true
+                withAnimation(TesseraMotion.press) {
+                    copied = true
+                }
                 Task {
                     try? await Task.sleep(for: .seconds(1.6))
-                    copied = false
+                    withAnimation(TesseraMotion.gentle) {
+                        copied = false
+                    }
                 }
             } label: {
                 Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
                     .font(.caption.weight(.medium))
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
+            .buttonStyle(TesseraSoftButtonStyle(tint: Color(hex: "#10B981"), isActive: copied, cornerRadius: 7, horizontalPadding: 8, verticalPadding: 4.5))
 
             // Discard Unsaved Edits (keeps saved override if any)
             if hasUnsavedDraft {
                 Button {
-                    appState.discardLiveScriptDraft(for: layout, terminal: terminal)
-                    validationResult = nil
+                    withAnimation(TesseraMotion.smooth) {
+                        appState.discardLiveScriptDraft(for: layout, terminal: terminal)
+                        validationResult = nil
+                    }
                 } label: {
                     Text("Revert")
                         .font(.caption.weight(.medium))
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .buttonStyle(TesseraSoftButtonStyle(cornerRadius: 7, horizontalPadding: 8, verticalPadding: 4.5))
                 .help("Discard unsaved edits")
             }
 
             // Regenerate from Visual Mosaic (clears draft & saved override)
             if hasSavedOverride || hasUnsavedDraft {
                 Button {
-                    appState.resetScriptToGenerated(for: layout, terminal: terminal)
-                    validationResult = nil
+                    withAnimation(TesseraMotion.smooth) {
+                        appState.resetScriptToGenerated(for: layout, terminal: terminal)
+                        validationResult = nil
+                    }
                 } label: {
                     Label("Reset to Mosaic", systemImage: "arrow.counterclockwise")
                         .font(.caption.weight(.medium))
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .buttonStyle(TesseraSoftButtonStyle(cornerRadius: 7, horizontalPadding: 8, verticalPadding: 4.5))
                 .help("Clear custom script and regenerate from visual panes")
             }
 
@@ -225,9 +229,14 @@ struct ScriptEditorView: View {
                 Label("Save Override", systemImage: "square.and.arrow.down")
                     .font(.caption.weight(.semibold))
             }
-            .buttonStyle(.borderedProminent)
-            .tint(hasUnsavedDraft ? Color(hex: "#10B981") : Color.secondary.opacity(0.45))
-            .controlSize(.small)
+            .buttonStyle(
+                TesseraProminentButtonStyle(
+                    tint: hasUnsavedDraft ? Color(hex: "#10B981") : Color.secondary.opacity(0.45),
+                    cornerRadius: 7,
+                    horizontalPadding: 9,
+                    verticalPadding: 4.5
+                )
+            )
             .disabled(!hasUnsavedDraft)
             .keyboardShortcut("s", modifiers: .command)
             .help("Persist edited script for \(terminal.displayName) in this layout (⌘S)")
@@ -237,11 +246,11 @@ struct ScriptEditorView: View {
     @ViewBuilder
     private var stateBadge: some View {
         if hasUnsavedDraft {
-            PillBadge(text: "Unsaved Draft · Runs Live", systemImage: "pencil.circle.fill", tint: .orange)
+            PillBadge(text: "Unsaved Draft · Runs Live", tint: .orange)
         } else if hasSavedOverride {
-            PillBadge(text: "Saved Custom Script", systemImage: "checkmark.seal.fill", tint: Color(hex: "#10B981"))
+            PillBadge(text: "Saved Custom Script", tint: Color(hex: "#10B981"))
         } else {
-            PillBadge(text: "Auto-Generated", systemImage: "wand.and.stars", tint: Color(hex: "#0EA5E9"))
+            PillBadge(text: "Auto-Generated", tint: Color(hex: "#0EA5E9"))
         }
     }
 

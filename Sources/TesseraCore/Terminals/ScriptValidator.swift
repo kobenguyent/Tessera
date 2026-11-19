@@ -109,35 +109,25 @@ public enum ScriptValidator {
         stdin: String,
         successMessage: String
     ) -> ScriptValidationResult {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executablePath)
-        process.arguments = arguments
-
-        let stdinPipe = Pipe()
-        let stderrPipe = Pipe()
-        process.standardInput = stdinPipe
-        process.standardError = stderrPipe
-        process.standardOutput = Pipe()
-
         do {
-            try process.run()
-            if let data = stdin.data(using: .utf8) {
-                stdinPipe.fileHandleForWriting.write(data)
-                try? stdinPipe.fileHandleForWriting.close()
+            let result = try SubprocessRunner.run(
+                executablePath: executablePath,
+                arguments: arguments,
+                stdin: stdin,
+                timeoutSeconds: 10.0
+            )
+            if result.timedOut {
+                return ScriptValidationResult(
+                    isValid: false,
+                    message: "Syntax validation timed out after 10 seconds."
+                )
             }
-            process.waitUntilExit()
-
-            let stderr = String(
-                data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
-                encoding: .utf8
-            )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-            if process.terminationStatus == 0 {
+            if result.exitCode == 0 {
                 return ScriptValidationResult(isValid: true, message: successMessage)
             }
             return ScriptValidationResult(
                 isValid: false,
-                message: stderr.isEmpty ? "Syntax check failed (exit code \(process.terminationStatus))." : stderr
+                message: result.stderr.isEmpty ? "Syntax check failed (exit code \(result.exitCode))." : result.stderr
             )
         } catch {
             return ScriptValidationResult(
