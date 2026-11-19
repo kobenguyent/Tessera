@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build, Test & Package (macOS)
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Show Toolchain Versions
+        run: |
+          swift --version
+          sw_vers
+
+      - name: Run Unit Test Suite
+        run: swift test --parallel
+
+      - name: Build Release Targets
+        run: swift build -c release
+
+      - name: Verify Native App Packaging (DMG, ZIP, CLI, SHA256SUMS)
+        run: |
+          chmod +x scripts/package-app.sh
+          ./scripts/package-app.sh \
+            --version "0.0.0-ci" \
+            --build-number "${{ github.run_number }}" \
+            --github-repo "${{ github.repository }}" \
+            --arch native
+
+      - name: Verify Packaged Artifacts
+        run: |
+          ls -lh build/
+          test -d "build/Tessera.app"
+          test -x "build/Tessera.app/Contents/MacOS/Tessera"
+          test -x "build/Tessera.app/Contents/Helpers/tessera"
+          test -f "build/SHA256SUMS.txt"
+          ./build/Tessera.app/Contents/Helpers/tessera version
+          ./build/Tessera.app/Contents/Helpers/tessera list
+          ./build/Tessera.app/Contents/Helpers/tessera terminals

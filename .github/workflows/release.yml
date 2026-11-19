@@ -1,0 +1,126 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release version tag (e.g. v1.0.0)"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark as pre-release"
+        required: false
+        default: false
+        type: boolean
+      universal:
+        description: "Build universal binary (Apple Silicon + Intel)"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Publish Native macOS Release
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Resolve Release Metadata
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ inputs.tag }}"
+            UNIVERSAL="${{ inputs.universal }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+            UNIVERSAL="true"
+          fi
+          VERSION="${TAG#v}"
+          if [[ "$UNIVERSAL" == "true" ]]; then
+            ARCH_MODE="universal"
+            ARCH_LABEL="universal"
+          else
+            ARCH_MODE="native"
+            ARCH_LABEL="$(uname -m)"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "arch_mode=${ARCH_MODE}" >> "$GITHUB_OUTPUT"
+          echo "arch_label=${ARCH_LABEL}" >> "$GITHUB_OUTPUT"
+          echo "Resolved Release Tag: ${TAG} (Version: ${VERSION}, Arch: ${ARCH_MODE})"
+
+      - name: Run Unit Test Suite
+        run: swift test --parallel
+
+      - name: Package Tessera.app, DMG, ZIP & CLI Artifacts
+        env:
+          CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+        run: |
+          chmod +x scripts/package-app.sh
+          ./scripts/package-app.sh \
+            --version "${{ steps.meta.outputs.version }}" \
+            --build-number "${{ github.run_number }}" \
+            --github-repo "${{ github.repository }}" \
+            --arch "${{ steps.meta.outputs.arch_mode }}"
+
+      - name: Verify Release Assets
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          ARCH="${{ steps.meta.outputs.arch_label }}"
+          test -f "build/Tessera-${VERSION}-macOS-${ARCH}.dmg"
+          test -f "build/Tessera-${VERSION}-macOS-${ARCH}.zip"
+          test -f "build/tessera-cli-${VERSION}-macOS-${ARCH}.tar.gz"
+          test -f "build/SHA256SUMS.txt"
+          (cd build && shasum -a 256 -c SHA256SUMS.txt)
+
+      - name: Compose Release Notes
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          ARCH="${{ steps.meta.outputs.arch_label }}"
+          cat << EOF > build/RELEASE_NOTES.md
+          ## ✦ Tessera v${VERSION}
+
+          Native macOS terminal mosaic orchestrator — design pre-defined split-pane layouts and launch startup commands across **iTerm2, Apple Terminal, Warp, WezTerm, Kitty, Ghostty, Alacritty, and tmux**.
+
+          ### Downloads
+
+          | Artifact | Format | Description |
+          | :--- | :--- | :--- |
+          | **\`Tessera-${VERSION}-macOS-${ARCH}.dmg\`** | **macOS Disk Image (Recommended)** | Double-click to mount and drag **Tessera.app** into **Applications**. |
+          | **\`Tessera-${VERSION}-macOS-${ARCH}.zip\`** | **macOS App Archive** | Extract **Tessera.app** directly in Finder. |
+          | **\`tessera-cli-${VERSION}-macOS-${ARCH}.tar.gz\`** | **Companion CLI (\`tessera\`)** | Standalone CLI binary for launching mosaics from scripts, Raycast, or Alfred. |
+          | **\`SHA256SUMS.txt\`** | **Integrity Checksums** | Verified automatically by Tessera's built-in GitHub Releases auto-updater. |
+
+          ### Installation
+          1. Download **\`Tessera-${VERSION}-macOS-${ARCH}.dmg\`** below and open it.
+          2. Drag **Tessera.app** into **Applications**.
+          3. On first launch (if ad-hoc signed), right-click **Tessera.app → Open**, or run \`xattr -dr com.apple.quarantine /Applications/Tessera.app\`.
+
+          ### SHA-256 Checksums
+          \`\`\`
+          $(cat build/SHA256SUMS.txt)
+          \`\`\`
+          EOF
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: "Tessera ${{ steps.meta.outputs.tag }}"
+          body_path: build/RELEASE_NOTES.md
+          generate_release_notes: true
+          prerelease: ${{ inputs.prerelease == true || contains(steps.meta.outputs.tag, '-') }}
+          files: |
+            build/Tessera-${{ steps.meta.outputs.version }}-macOS-${{ steps.meta.outputs.arch_label }}.dmg
+            build/Tessera-${{ steps.meta.outputs.version }}-macOS-${{ steps.meta.outputs.arch_label }}.zip
+            build/tessera-cli-${{ steps.meta.outputs.version }}-macOS-${{ steps.meta.outputs.arch_label }}.tar.gz
+            build/SHA256SUMS.txt
