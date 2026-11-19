@@ -63,6 +63,7 @@ struct ScriptDraftKey: Hashable {
 @MainActor
 final class AppState: ObservableObject {
     @Published var layouts: [TesseraLayout] = []
+    @Published var commandLibrary: [CommandSnippet] = []
     @Published var selectedLayoutID: UUID?
     @Published var selectedTabID: UUID?
     @Published var selectedPaneID: UUID?
@@ -78,9 +79,11 @@ final class AppState: ObservableObject {
 
     @Published var updateState: UpdateUIState = .idle
     @Published var showingUpdateSheet = false
+    @Published var showingCommandLibrarySheet = false
     @Published var cliInstallStatus: String?
 
     private let layoutStore: LayoutStore
+    private let commandLibraryStore: CommandLibraryStore
     private let settingsStore: SettingsStore
     private let detector: TerminalDetector
     private let launcher: TerminalLauncher
@@ -90,12 +93,14 @@ final class AppState: ObservableObject {
 
     init(
         layoutStore: LayoutStore = LayoutStore(),
+        commandLibraryStore: CommandLibraryStore = CommandLibraryStore(),
         settingsStore: SettingsStore = SettingsStore(),
         detector: TerminalDetector = TerminalDetector(),
         launcher: TerminalLauncher = TerminalLauncher(),
         updateService: UpdateService = UpdateService()
     ) {
         self.layoutStore = layoutStore
+        self.commandLibraryStore = commandLibraryStore
         self.settingsStore = settingsStore
         self.detector = detector
         self.launcher = launcher
@@ -104,6 +109,7 @@ final class AppState: ObservableObject {
 
         refreshTerminals()
         loadLayouts()
+        loadCommandLibrary()
         startAutoUpdateScheduler()
     }
 
@@ -178,6 +184,124 @@ final class AppState: ObservableObject {
             try settingsStore.save(settings)
         } catch {
             showToast("Failed to save settings", subtitle: error.localizedDescription, isError: true)
+        }
+    }
+
+    // MARK: - Custom Command Library
+
+    func loadCommandLibrary() {
+        do {
+            commandLibrary = try commandLibraryStore.loadCommands()
+        } catch {
+            commandLibrary = CommandSnippet.builtInDefaults()
+            showToast("Loaded default command library", subtitle: error.localizedDescription, isError: true)
+        }
+    }
+
+    func saveCommandLibrary() {
+        do {
+            try commandLibraryStore.saveCommands(commandLibrary)
+        } catch {
+            showToast("Failed to save command library", subtitle: error.localizedDescription, isError: true)
+        }
+    }
+
+    func isCommandInLibrary(_ command: String) -> Bool {
+        let normalized = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return false }
+        return commandLibrary.contains {
+            $0.command.trimmingCharacters(in: .whitespacesAndNewlines) == normalized
+        }
+    }
+
+    @discardableResult
+    func addCommandToLibrary(
+        label: String,
+        command: String,
+        category: CommandCategory = .custom
+    ) -> CommandSnippet? {
+        let trimmedCmd = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedCmd.isEmpty else { return nil }
+        let trimmedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalLabel = trimmedLabel.isEmpty ? CommandSnippet.suggestedLabel(for: trimmedCmd) : trimmedLabel
+
+        let snippet = CommandSnippet(
+            label: finalLabel,
+            command: trimmedCmd,
+            category: category,
+            isBuiltIn: false
+        )
+        commandLibrary.insert(snippet, at: 0)
+        saveCommandLibrary()
+        showToast("Saved to Command Library", subtitle: finalLabel)
+        return snippet
+    }
+
+    func updateCommandInLibrary(_ snippet: CommandSnippet) {
+        guard let idx = commandLibrary.firstIndex(where: { $0.id == snippet.id }) else { return }
+        commandLibrary[idx] = snippet
+        saveCommandLibrary()
+    }
+
+    func deleteCommandFromLibrary(_ snippet: CommandSnippet) {
+        commandLibrary.removeAll(where: { $0.id == snippet.id })
+        saveCommandLibrary()
+        showToast("Removed \"\(snippet.label)\" from Library")
+    }
+
+    func restoreBuiltInCommands() {
+        let defaults = CommandSnippet.builtInDefaults()
+        var added = 0
+        for item in defaults where !commandLibrary.contains(where: { $0.id == item.id }) {
+            commandLibrary.append(item)
+            added += 1
+        }
+        saveCommandLibrary()
+        showToast(added > 0 ? "Restored \(added) built-in command(s)" : "All built-in commands already present")
+    }
+
+    func insertCommandIntoSelectedPane(_ command: String) {
+        guard let pane = selectedPane else { return }
+        let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        updatePane(pane.id) { $0.commands.append(trimmed) }
+    }
+
+    func exportCommandsWithPanel() {
+        let panel = NSSavePanel()
+        panel.title = "Export Command Library"
+        panel.nameFieldStringValue = "tessera-commands.json"
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let data = try commandLibraryStore.exportJSON(commands: commandLibrary)
+            try data.write(to: url, options: .atomic)
+            showToast("Exported \(commandLibrary.count) commands", subtitle: url.lastPathComponent)
+        } catch {
+            showToast("Export Failed", subtitle: error.localizedDescription, isError: true)
+        }
+    }
+
+    func importCommandsWithPanel() {
+        let panel = NSOpenPanel()
+        panel.title = "Import Command Library"
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let data = try Data(contentsOf: url)
+            let imported = try commandLibraryStore.importJSON(from: data)
+            for item in imported {
+                if let idx = commandLibrary.firstIndex(where: { $0.id == item.id }) {
+                    commandLibrary[idx] = item
+                } else {
+                    commandLibrary.insert(item, at: 0)
+                }
+            }
+            saveCommandLibrary()
+            showToast("Imported \(imported.count) command(s)")
+        } catch {
+            showToast("Import Failed", subtitle: error.localizedDescription, isError: true)
         }
     }
 

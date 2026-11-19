@@ -45,6 +45,11 @@ struct TesseraApp: App {
                 .keyboardShortcut("i", modifiers: [.command, .shift])
                 .disabled(appState.selectedLayout == nil)
 
+                Button("Command Library…") {
+                    appState.showingCommandLibrarySheet = true
+                }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
+
                 Divider()
 
                 Button("Import Layouts JSON…") {

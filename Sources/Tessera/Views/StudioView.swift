@@ -69,6 +69,10 @@ struct StudioView: View {
             UpdateSheetView()
                 .environmentObject(appState)
         }
+        .sheet(isPresented: $appState.showingCommandLibrarySheet) {
+            CommandLibrarySheet()
+                .environmentObject(appState)
+        }
     }
 
     private func updateBanner(release: UpdateRelease) -> some View {

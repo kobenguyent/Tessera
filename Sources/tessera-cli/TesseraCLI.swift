@@ -17,6 +17,8 @@ struct TesseraCLI {
             await runLaunch(args: Array(args.dropFirst()))
         case "terminals", "drivers":
             runTerminals()
+        case "commands", "cmd":
+            runCommands(args: Array(args.dropFirst()))
         case "check-update", "update":
             await runCheckUpdate(args: Array(args.dropFirst()))
         case "export":
@@ -46,6 +48,9 @@ struct TesseraCLI {
             --dry-run                                   Print the orchestration script without executing
             --generated                                 Ignore any saved custom script override and regenerate from panes
           tessera terminals                             Show detected terminal emulators and capabilities
+          tessera commands [list|add|remove]            Manage your reusable Command Library
+            tessera commands add <label> <cmd> [--category <cat>]
+            tessera commands remove <label>
           tessera check-update [--repo owner/repo]      Check GitHub Releases for a newer version
             --prerelease                                Include pre-release builds
           tessera export <file.json>                    Export all layouts to JSON
@@ -280,6 +285,87 @@ struct TesseraCLI {
             print("✓ Imported \(imported.count) layout(s). Total layouts: \(existing.count)")
         } catch {
             fputs("Import failed: \(error.localizedDescription)\n", stderr)
+            exit(1)
+        }
+    }
+
+    private static func runCommands(args: [String]) {
+        let store = CommandLibraryStore()
+        let subcommand = args.first?.lowercased() ?? "list"
+
+        switch subcommand {
+        case "list", "ls":
+            do {
+                let commands = try store.loadCommands()
+                print("Command Library (\(commands.count)):")
+                for item in commands {
+                    print("  [\(item.category.displayName.padding(toLength: 10, withPad: " ", startingAt: 0))] \(item.label.padding(toLength: 18, withPad: " ", startingAt: 0)) $ \(item.command)")
+                }
+            } catch {
+                fputs("Failed to load commands: \(error.localizedDescription)\n", stderr)
+                exit(1)
+            }
+
+        case "add":
+            let rest = Array(args.dropFirst())
+            var positional: [String] = []
+            var category: CommandCategory = .custom
+            var idx = 0
+            while idx < rest.count {
+                if rest[idx] == "--category" || rest[idx] == "-c" {
+                    idx += 1
+                    if idx < rest.count, let parsed = CommandCategory(rawValue: rest[idx].lowercased()) {
+                        category = parsed
+                    } else {
+                        fputs("Invalid category. Supported: \(CommandCategory.allCases.map(\.rawValue).joined(separator: ", "))\n", stderr)
+                        exit(1)
+                    }
+                } else {
+                    positional.append(rest[idx])
+                }
+                idx += 1
+            }
+
+            guard positional.count >= 2 else {
+                fputs("Usage: tessera commands add <label> <command> [--category custom|dev|git|containers|testing|monitoring]\n", stderr)
+                exit(1)
+            }
+            let label = positional[0]
+            let cmd = positional.dropFirst().joined(separator: " ")
+
+            do {
+                var commands = try store.loadCommands()
+                let snippet = CommandSnippet(label: label, command: cmd, category: category, isBuiltIn: false)
+                commands.insert(snippet, at: 0)
+                try store.saveCommands(commands)
+                print("✓ Added \"\(label)\" [\(category.displayName)] -> $ \(cmd)")
+            } catch {
+                fputs("Failed to add command: \(error.localizedDescription)\n", stderr)
+                exit(1)
+            }
+
+        case "remove", "rm", "delete":
+            guard let query = args.dropFirst().first?.lowercased() else {
+                fputs("Usage: tessera commands remove <label>\n", stderr)
+                exit(1)
+            }
+            do {
+                var commands = try store.loadCommands()
+                let before = commands.count
+                commands.removeAll { $0.label.lowercased() == query }
+                guard commands.count < before else {
+                    fputs("No command with label \"\(query)\" found.\n", stderr)
+                    exit(1)
+                }
+                try store.saveCommands(commands)
+                print("✓ Removed \"\(query)\" from Command Library.")
+            } catch {
+                fputs("Failed to remove command: \(error.localizedDescription)\n", stderr)
+                exit(1)
+            }
+
+        default:
+            fputs("Unknown commands action: \(subcommand). Use list, add, or remove.\n", stderr)
             exit(1)
         }
     }

@@ -7,14 +7,10 @@ struct PaneInspectorView: View {
     let pane: PaneSpec
 
     @State private var newCommandText = ""
-
-    private static let quickSnippets: [(label: String, command: String)] = [
-        ("git status", "git status -sb"),
-        ("npm dev", "npm run dev"),
-        ("swift test", "swift test"),
-        ("docker ps", "docker ps"),
-        ("htop/top", "top -o cpu")
-    ]
+    @State private var showingQuickAddLibraryPopover = false
+    @State private var libraryDraftLabel = ""
+    @State private var libraryDraftCommand = ""
+    @State private var libraryDraftCategory: CommandCategory = .custom
 
     var body: some View {
         ScrollView {
@@ -109,14 +105,30 @@ struct PaneInspectorView: View {
                 }
 
                 // Startup Commands
-                GroupBox("Startup Commands") {
+                GroupBox {
                     VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Startup Commands")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button {
+                                appState.showingCommandLibrarySheet = true
+                            } label: {
+                                Label("Library (\(appState.commandLibrary.count))", systemImage: "books.vertical")
+                                    .font(.caption2.weight(.medium))
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.mini)
+                            .help("Browse, add, and organize reusable custom commands (⇧⌘L)")
+                        }
+
                         if pane.commands.isEmpty {
                             Text("No startup commands yet — pane opens an interactive shell.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         } else {
-                            ForEach(Array(pane.commands.enumerated()), id: \.offset) { index, _ in
+                            ForEach(Array(pane.commands.enumerated()), id: \.offset) { index, cmdText in
                                 HStack(spacing: 6) {
                                     Text("$")
                                         .font(.system(.caption, design: .monospaced).bold())
@@ -124,6 +136,18 @@ struct PaneInspectorView: View {
                                     TextField("Command", text: commandBinding(at: index))
                                         .font(.system(.callout, design: .monospaced))
                                         .textFieldStyle(.roundedBorder)
+
+                                    let alreadySaved = appState.isCommandInLibrary(cmdText)
+                                    Button {
+                                        openQuickSavePopover(prefillCommand: cmdText)
+                                    } label: {
+                                        Image(systemName: alreadySaved ? "bookmark.fill" : "bookmark")
+                                            .font(.caption)
+                                            .foregroundStyle(alreadySaved ? Color(hex: "#A855F7") : .secondary)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(cmdText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                    .help(alreadySaved ? "Already in Command Library (click to save another copy)" : "Save this command to your Command Library")
 
                                     Button {
                                         appState.updatePane(pane.id) { p in
@@ -147,19 +171,61 @@ struct PaneInspectorView: View {
 
                             Button("Add") { appendCommand() }
                                 .disabled(newCommandText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                            Button {
+                                openQuickSavePopover(prefillCommand: newCommandText)
+                            } label: {
+                                Image(systemName: "bookmark.circle")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Add custom command to Library")
+                            .popover(isPresented: $showingQuickAddLibraryPopover) {
+                                quickAddLibraryPopover
+                            }
                         }
 
-                        // Quick snippet pills
+                        // Reusable Command Library Chips
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 6) {
-                                ForEach(Self.quickSnippets, id: \.label) { snippet in
-                                    Button("+ \(snippet.label)") {
+                                ForEach(appState.commandLibrary) { snippet in
+                                    Button {
                                         appState.updatePane(pane.id) { $0.commands.append(snippet.command) }
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: snippet.category.symbolName)
+                                                .font(.system(size: 8.5))
+                                                .foregroundStyle(Color(hex: snippet.category.accentHex))
+                                            Text(snippet.label)
+                                        }
                                     }
                                     .font(.caption2)
                                     .buttonStyle(.bordered)
                                     .controlSize(.mini)
+                                    .help("$ \(snippet.command)")
+                                    .contextMenu {
+                                        Button("Insert into Pane") {
+                                            appState.updatePane(pane.id) { $0.commands.append(snippet.command) }
+                                        }
+                                        Button("Manage Command Library…") {
+                                            appState.showingCommandLibrarySheet = true
+                                        }
+                                        Divider()
+                                        Button("Remove from Library", role: .destructive) {
+                                            appState.deleteCommandFromLibrary(snippet)
+                                        }
+                                    }
                                 }
+
+                                Button {
+                                    openQuickSavePopover(prefillCommand: newCommandText)
+                                } label: {
+                                    Label("New…", systemImage: "plus")
+                                }
+                                .font(.caption2.weight(.semibold))
+                                .buttonStyle(.borderedProminent)
+                                .tint(Color(hex: layout.accentHex))
+                                .controlSize(.mini)
+                                .help("Add a new custom command to your library")
                             }
                         }
                     }
@@ -238,6 +304,69 @@ struct PaneInspectorView: View {
         guard !trimmed.isEmpty else { return }
         appState.updatePane(pane.id) { $0.commands.append(trimmed) }
         newCommandText = ""
+    }
+
+    private func openQuickSavePopover(prefillCommand: String) {
+        let trimmed = prefillCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        libraryDraftCommand = trimmed
+        libraryDraftLabel = trimmed.isEmpty ? "" : CommandSnippet.suggestedLabel(for: trimmed)
+        libraryDraftCategory = .custom
+        showingQuickAddLibraryPopover = true
+    }
+
+    private var quickAddLibraryPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Add to Command Library", systemImage: "bookmark.fill")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Label")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("e.g. Start Backend", text: $libraryDraftLabel)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Command")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("e.g. docker compose up -d", text: $libraryDraftCommand)
+                    .font(.system(.callout, design: .monospaced))
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            Picker("Category", selection: $libraryDraftCategory) {
+                ForEach(CommandCategory.allCases) { cat in
+                    Label(cat.displayName, systemImage: cat.symbolName).tag(cat)
+                }
+            }
+
+            HStack {
+                Button("Open Full Library") {
+                    showingQuickAddLibraryPopover = false
+                    appState.showingCommandLibrarySheet = true
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
+
+                Spacer()
+
+                Button("Save") {
+                    if appState.addCommandToLibrary(
+                        label: libraryDraftLabel,
+                        command: libraryDraftCommand,
+                        category: libraryDraftCategory
+                    ) != nil {
+                        showingQuickAddLibraryPopover = false
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(libraryDraftCommand.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(14)
+        .frame(width: 300)
     }
 
     private var titleBinding: Binding<String> {

@@ -13,13 +13,16 @@ struct SettingsView: View {
             terminalsTab
                 .tabItem { Label("Terminals", systemImage: "terminal") }
 
+            commandsTab
+                .tabItem { Label("Commands", systemImage: "books.vertical") }
+
             updatesTab
                 .tabItem { Label("Updates", systemImage: "arrow.triangle.2.circlepath") }
 
             cliAndDataTab
                 .tabItem { Label("CLI & Data", systemImage: "square.and.arrow.up.on.square") }
         }
-        .frame(width: 580, height: 420)
+        .frame(width: 640, height: 470)
     }
 
     // MARK: - General
@@ -49,6 +52,7 @@ struct SettingsView: View {
                 LabeledContent("Version", value: TesseraMetadata.currentVersion.tagString)
                 LabeledContent("Bundle ID", value: TesseraMetadata.bundleIdentifier)
                 LabeledContent("Layouts Saved", value: "\(appState.layouts.count)")
+                LabeledContent("Commands in Library", value: "\(appState.commandLibrary.count)")
             }
         }
         .formStyle(.grouped)
@@ -106,6 +110,13 @@ struct SettingsView: View {
                 .padding(.vertical, 4)
             }
         }
+    }
+
+    // MARK: - Command Library
+
+    private var commandsTab: some View {
+        CommandLibraryManagerView(showInsertAction: false)
+            .padding(16)
     }
 
     // MARK: - Updates & GitHub Releases
@@ -232,6 +243,26 @@ struct SettingsView: View {
 
                 Button("Restore Built-in Preset Mosaics") {
                     appState.restoreBuiltInPresets()
+                }
+            }
+
+            Section("Command Library") {
+                HStack(spacing: 10) {
+                    Button {
+                        appState.exportCommandsWithPanel()
+                    } label: {
+                        Label("Export Commands JSON…", systemImage: "square.and.arrow.up")
+                    }
+
+                    Button {
+                        appState.importCommandsWithPanel()
+                    } label: {
+                        Label("Import Commands JSON…", systemImage: "square.and.arrow.down")
+                    }
+                }
+
+                Button("Restore Default Command Library") {
+                    appState.restoreBuiltInCommands()
                 }
             }
         }
