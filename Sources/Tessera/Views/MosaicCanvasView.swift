@@ -30,7 +30,8 @@ struct MosaicCanvasView: View {
 
                 Text("\(tab.root.leafCount) pane\(tab.root.leafCount == 1 ? "" : "s")")
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .monospacedDigit()
+                    .foregroundStyle(.white.opacity(0.55))
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
                     .background(.white.opacity(0.08), in: Capsule())

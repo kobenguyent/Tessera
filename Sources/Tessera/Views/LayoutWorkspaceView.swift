@@ -7,28 +7,30 @@ struct LayoutWorkspaceView: View {
 
     @State private var showingStylePopover = false
     @State private var showingSplitRatiosPopover = false
+    @State private var showingInspector = true
 
     var body: some View {
         VStack(spacing: 0) {
             // Top Studio Header
             headerBar
-                .padding(.horizontal, 18)
-                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(Color(nsColor: .windowBackgroundColor))
 
             Divider()
 
             // Secondary Bar: Tabs + Structure Templates + Working Directory
             subToolbar
-                .padding(.horizontal, 18)
-                .padding(.vertical, 9)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
                 .background(Color(nsColor: .controlBackgroundColor).opacity(0.35))
 
             Divider()
 
             // Main Interactive Studio Area: Visual Mosaic OR Live Script Editor
             if appState.workspaceMode == .mosaic {
-                HSplitView {
-                    VStack(spacing: 12) {
+                HStack(spacing: 0) {
+                    VStack(spacing: 10) {
                         if let tab = appState.selectedTab {
                             MosaicCanvasView(layout: layout, tab: tab)
                                 .frame(minWidth: 420, minHeight: 320)
@@ -40,9 +42,11 @@ struct LayoutWorkspaceView: View {
                     .padding(16)
                     .frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)
 
-                    if let pane = appState.selectedPane {
+                    if showingInspector, let pane = appState.selectedPane {
+                        Divider()
                         PaneInspectorView(layout: layout, pane: pane)
-                            .frame(minWidth: 290, idealWidth: 325, maxWidth: 390)
+                            .frame(width: 325)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                 }
             } else {
@@ -56,17 +60,21 @@ struct LayoutWorkspaceView: View {
     // MARK: - Header Bar
 
     private var headerBar: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 10) {
             // Icon + Accent Picker Button
             Button {
                 showingStylePopover.toggle()
             } label: {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .fill(Color(hex: layout.accentHex).opacity(0.20))
-                        .frame(width: 42, height: 42)
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color(hex: layout.accentHex).opacity(0.18))
+                        .frame(width: 38, height: 38)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(Color(hex: layout.accentHex).opacity(0.38), lineWidth: 1)
+                        )
                     Image(systemName: layout.icon)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Color(hex: layout.accentHex))
                 }
             }
@@ -77,26 +85,30 @@ struct LayoutWorkspaceView: View {
             .help("Customize icon & accent color")
 
             // Inline Editable Title + Subtitle
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 TextField("Layout Name", text: nameBinding)
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .font(.system(size: 16.5, weight: .bold, design: .rounded))
                     .textFieldStyle(.plain)
                 TextField("Add a short description…", text: subtitleBinding)
-                    .font(.callout)
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .textFieldStyle(.plain)
             }
+            .frame(minWidth: 130, maxWidth: 280, alignment: .leading)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 6)
 
             // Pin Toggle
             Button {
                 appState.togglePin(layout)
             } label: {
                 Image(systemName: layout.isPinned ? "pin.fill" : "pin")
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(layout.isPinned ? Color(hex: layout.accentHex) : .secondary)
+                    .frame(width: 24, height: 24)
             }
             .buttonStyle(.bordered)
+            .controlSize(.small)
             .help(layout.isPinned ? "Pinned to Menu Bar" : "Pin to Menu Bar")
 
             // Terminal Picker
@@ -125,16 +137,18 @@ struct LayoutWorkspaceView: View {
                 }
             } label: {
                 let effective = appState.resolvedTerminal(for: layout)
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     Circle()
                         .fill(appState.isTerminalInstalled(effective) ? Color(hex: "#10B981") : Color.orange)
-                        .frame(width: 7, height: 7)
+                        .frame(width: 6.5, height: 6.5)
                     Text(effective.displayName)
-                        .font(.callout.weight(.medium))
+                        .font(.system(size: 12.5, weight: .medium))
+                        .lineLimit(1)
                 }
-                .padding(.horizontal, 6)
+                .padding(.horizontal, 4)
             }
             .menuStyle(.borderedButton)
+            .controlSize(.small)
             .fixedSize()
             .help("Select target terminal emulator")
 
@@ -145,7 +159,8 @@ struct LayoutWorkspaceView: View {
                 }
             }
             .labelsHidden()
-            .frame(width: 155)
+            .controlSize(.small)
+            .frame(width: 126)
             .help("Window placement preset")
 
             // Mosaic / Live Script Editor Switcher
@@ -161,19 +176,19 @@ struct LayoutWorkspaceView: View {
                             appState.workspaceMode = mode
                         }
                     } label: {
-                        HStack(spacing: 5) {
+                        HStack(spacing: 4) {
                             Image(systemName: mode.symbolName)
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: 10.5, weight: .semibold))
                             Text(mode.label)
-                                .font(.system(size: 12, weight: selected ? .semibold : .medium))
+                                .font(.system(size: 11.5, weight: selected ? .semibold : .medium))
                             if mode == .script && (hasLiveDraft || hasSavedCustom) {
                                 Circle()
                                     .fill(hasLiveDraft ? Color.orange : Color(hex: "#10B981"))
-                                    .frame(width: 6, height: 6)
+                                    .frame(width: 5.5, height: 5.5)
                             }
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
                         .background(
                             selected ? Color(hex: layout.accentHex).opacity(0.22) : Color.clear,
                             in: RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -183,43 +198,64 @@ struct LayoutWorkspaceView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(3)
+            .padding(2.5)
             .background(.quaternary.opacity(0.55), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .fixedSize()
             .help("Switch between Visual Mosaic and Live Script Editor (⇧⌘I)")
 
             // Primary Launch Button
             let launchTitle: String = {
-                if hasLiveDraft { return "Run Edited Script" }
-                if hasSavedCustom { return "Run Custom Script" }
-                return "Launch Mosaic"
+                if hasLiveDraft { return "Run Script" }
+                if hasSavedCustom { return "Run Custom" }
+                return "Launch"
             }()
 
             Button {
                 appState.launch(layout: layout)
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     if appState.isLaunching {
-                        ProgressView().controlSize(.small)
+                        ProgressView().controlSize(.mini)
                     } else {
                         Image(systemName: "play.fill")
+                            .font(.system(size: 10.5))
                     }
                     Text(launchTitle)
-                        .fontWeight(.semibold)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .lineLimit(1)
                 }
-                .padding(.horizontal, 6)
+                .padding(.horizontal, 5)
             }
             .buttonStyle(.borderedProminent)
+            .controlSize(.small)
             .tint(hasLiveDraft ? Color.orange : Color(hex: layout.accentHex))
             .disabled(appState.isLaunching)
+            .fixedSize()
             .keyboardShortcut(.return, modifiers: .command)
             .help("Launch in \(activeTerminal.displayName) (⌘↩)")
+
+            if appState.workspaceMode == .mosaic {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        showingInspector.toggle()
+                    }
+                } label: {
+                    Image(systemName: "sidebar.trailing")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(showingInspector ? Color(hex: layout.accentHex) : .secondary)
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help(showingInspector ? "Hide Pane Inspector" : "Show Pane Inspector")
+            }
         }
     }
 
     // MARK: - Sub-Toolbar (Tabs, Templates, Root CWD)
 
     private var subToolbar: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             // Tabs Strip
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
@@ -227,29 +263,31 @@ struct LayoutWorkspaceView: View {
                         let isSelected = appState.selectedTab?.id == tab.id
                         HStack(spacing: 5) {
                             Image(systemName: "macwindow")
-                                .font(.system(size: 10))
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(isSelected ? Color(hex: layout.accentHex) : .secondary)
                             if isSelected {
                                 TextField("Tab", text: tabTitleBinding(tabID: tab.id))
                                     .textFieldStyle(.plain)
                                     .font(.system(size: 12, weight: .semibold))
-                                    .frame(minWidth: 50, maxWidth: 110)
+                                    .frame(minWidth: 44, maxWidth: 105)
                             } else {
                                 Text(tab.title)
                                     .font(.system(size: 12, weight: .medium))
+                                    .lineLimit(1)
                             }
                             if layout.tabs.count > 1 && isSelected {
                                 Button {
                                     appState.deleteTab(tab.id)
                                 } label: {
                                     Image(systemName: "xmark")
-                                        .font(.system(size: 9, weight: .bold))
+                                        .font(.system(size: 8.5, weight: .bold))
                                         .foregroundStyle(.secondary)
                                 }
                                 .buttonStyle(.plain)
                             }
                         }
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
+                        .padding(.vertical, 4.5)
                         .background(
                             isSelected ? Color(hex: layout.accentHex).opacity(0.18) : Color.secondary.opacity(0.08),
                             in: RoundedRectangle(cornerRadius: 7, style: .continuous)
@@ -267,8 +305,8 @@ struct LayoutWorkspaceView: View {
                         appState.addTab()
                     } label: {
                         Image(systemName: "plus")
-                            .font(.system(size: 11, weight: .semibold))
-                            .frame(width: 24, height: 24)
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .frame(width: 22, height: 22)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -276,7 +314,7 @@ struct LayoutWorkspaceView: View {
                 }
             }
 
-            Divider().frame(height: 18)
+            Divider().frame(height: 16)
 
             // Quick Structure Presets
             Menu {
@@ -289,9 +327,10 @@ struct LayoutWorkspaceView: View {
                 }
             } label: {
                 Label("Structure", systemImage: "square.grid.2x2")
-                    .font(.callout)
+                    .font(.system(size: 12, weight: .medium))
             }
             .menuStyle(.borderedButton)
+            .controlSize(.small)
             .fixedSize()
             .help("Apply a pre-defined pane grid template (preserves your pane commands)")
 
@@ -301,35 +340,39 @@ struct LayoutWorkspaceView: View {
                     showingSplitRatiosPopover.toggle()
                 } label: {
                     Label("Ratios", systemImage: "slider.horizontal.below.rectangle")
-                        .font(.callout)
+                        .font(.system(size: 12, weight: .medium))
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.small)
+                .fixedSize()
                 .popover(isPresented: $showingSplitRatiosPopover) {
                     splitRatiosPopover(splits: tab.root.allSplits)
                 }
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 6)
 
             // Root Working Directory
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 Image(systemName: "folder.fill")
-                    .font(.caption)
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                 TextField("~", text: rootDirectoryBinding)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.system(size: 11.5, design: .monospaced))
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: 170)
+                    .controlSize(.small)
+                    .frame(minWidth: 110, idealWidth: 145, maxWidth: 170)
                 Button {
                     if let dir = appState.pickDirectory(initialPath: layout.workingDirectory) {
                         appState.mutateSelectedLayout { $0.workingDirectory = dir }
                     }
                 } label: {
                     Text("Browse")
-                        .font(.caption)
+                        .font(.system(size: 11.5, weight: .medium))
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .fixedSize()
             }
         }
     }
@@ -339,7 +382,7 @@ struct LayoutWorkspaceView: View {
     private var capabilityBar: some View {
         let terminal = appState.resolvedTerminal(for: layout)
         let caps = terminal.capabilities
-        return HStack(spacing: 10) {
+        return HStack(spacing: 8) {
             PillBadge(
                 text: caps.orchestrationMethod,
                 systemImage: terminal.symbolName,
@@ -348,7 +391,7 @@ struct LayoutWorkspaceView: View {
             if caps.nativeSplits {
                 PillBadge(text: "Native Splits", systemImage: "checkmark.circle.fill", tint: Color(hex: "#10B981"))
             } else {
-                PillBadge(text: "Geometric Window Tiling", systemImage: "rectangle.3.group", tint: .orange)
+                PillBadge(text: "Geometric Tiling", systemImage: "rectangle.3.group", tint: .orange)
             }
             if caps.nativeTabs {
                 PillBadge(text: "Multi-Tab", systemImage: "macwindow.on.rectangle", tint: Color(hex: "#0EA5E9"))
@@ -357,21 +400,23 @@ struct LayoutWorkspaceView: View {
                 Button {
                     appState.workspaceMode = .script
                 } label: {
-                    PillBadge(text: "Unsaved Script Draft", systemImage: "pencil.circle.fill", tint: .orange)
+                    PillBadge(text: "Unsaved Draft", systemImage: "pencil.circle.fill", tint: .orange)
                 }
                 .buttonStyle(.plain)
             } else if layout.hasCustomScript(for: terminal) {
                 Button {
                     appState.workspaceMode = .script
                 } label: {
-                    PillBadge(text: "Custom Script Active", systemImage: "chevron.left.forwardslash.chevron.right", tint: Color(hex: "#10B981"))
+                    PillBadge(text: "Custom Script", systemImage: "chevron.left.forwardslash.chevron.right", tint: Color(hex: "#10B981"))
                 }
                 .buttonStyle(.plain)
             }
-            Spacer()
+            Spacer(minLength: 8)
             Text("Click any pane to configure · Switch to Script to edit code live")
-                .font(.caption)
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
     }
 

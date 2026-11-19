@@ -61,12 +61,63 @@ struct PillBadge: View {
             }
             Text(text)
                 .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 3)
+        .padding(.vertical, 3.5)
         .foregroundStyle(tint)
         .background(tint.opacity(0.14), in: Capsule())
         .overlay(Capsule().strokeBorder(tint.opacity(0.28), lineWidth: 0.75))
+        .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+struct InspectorSectionCard<HeaderAccessory: View, Content: View>: View {
+    let title: String
+    var systemImage: String? = nil
+    @ViewBuilder var accessory: () -> HeaderAccessory
+    @ViewBuilder var content: () -> Content
+
+    init(
+        _ title: String,
+        systemImage: String? = nil,
+        @ViewBuilder accessory: @escaping () -> HeaderAccessory = { EmptyView() },
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.accessory = accessory
+        self.content = content
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                Text(title.uppercased())
+                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                    .tracking(0.5)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                accessory()
+            }
+
+            content()
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.primary.opacity(0.035))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
+        )
     }
 }
 

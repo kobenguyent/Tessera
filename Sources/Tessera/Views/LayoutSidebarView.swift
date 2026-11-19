@@ -28,66 +28,70 @@ struct LayoutSidebarView: View {
             // Brand header
             HStack(spacing: 10) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(hex: "#6366F1"), Color(hex: "#A855F7")],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color(hex: "#6366F1").opacity(0.22))
+                        .frame(width: 28, height: 28)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(Color(hex: "#6366F1").opacity(0.45), lineWidth: 1)
                         )
-                        .frame(width: 30, height: 30)
                     Image(systemName: "square.grid.2x2.fill")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.white)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color(hex: "#818CF8"))
                 }
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(TesseraMetadata.appName)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .font(.system(size: 14.5, weight: .bold, design: .rounded))
                     Text("v\(TesseraMetadata.currentVersionString)")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
 
-                Spacer()
+                Spacer(minLength: 4)
 
                 Button {
                     appState.createNewLayout()
                 } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .frame(width: 22, height: 22)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .help("New Mosaic Layout (⌘N)")
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 12)
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
             .padding(.bottom, 10)
 
             // Search box
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                    .font(.caption)
+                    .font(.system(size: 11.5, weight: .medium))
                 TextField("Filter mosaics…", text: $searchText)
                     .textFieldStyle(.plain)
-                    .font(.callout)
+                    .font(.system(size: 12.5))
                 if !searchText.isEmpty {
                     Button {
                         searchText = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 9)
+            .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .padding(.horizontal, 12)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+            )
+            .padding(.horizontal, 16)
             .padding(.bottom, 8)
 
             // Layouts list
@@ -117,16 +121,21 @@ struct LayoutSidebarView: View {
 
             // Footer: Terminal count + Update button
             HStack(spacing: 8) {
-                Label("\(appState.installedTerminals.count) terminals", systemImage: "terminal")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 5) {
+                    Image(systemName: "terminal")
+                        .font(.system(size: 10.5, weight: .medium))
+                    Text("\(appState.installedTerminals.count) terminals")
+                        .font(.system(size: 11.5))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(.secondary)
 
-                Spacer()
+                Spacer(minLength: 4)
 
                 updateFooterButton
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
         }
     }
 

@@ -11,17 +11,15 @@ struct UpdateSheetView: View {
             HStack(spacing: 12) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(hex: "#10B981"), Color(hex: "#0EA5E9")],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                        .fill(Color(hex: "#10B981").opacity(0.18))
                         .frame(width: 44, height: 44)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(Color(hex: "#10B981").opacity(0.45), lineWidth: 1)
+                        )
                     Image(systemName: "arrow.down.app.fill")
                         .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Color(hex: "#10B981"))
                 }
 
                 VStack(alignment: .leading, spacing: 2) {

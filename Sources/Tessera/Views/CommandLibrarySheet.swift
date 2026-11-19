@@ -266,17 +266,15 @@ struct CommandLibrarySheet: View {
             HStack(spacing: 10) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(hex: "#6366F1"), Color(hex: "#A855F7")],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                        .fill(Color(hex: "#6366F1").opacity(0.20))
                         .frame(width: 36, height: 36)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(Color(hex: "#6366F1").opacity(0.45), lineWidth: 1)
+                        )
                     Image(systemName: "books.vertical.fill")
                         .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Color(hex: "#818CF8"))
                 }
 
                 VStack(alignment: .leading, spacing: 2) {

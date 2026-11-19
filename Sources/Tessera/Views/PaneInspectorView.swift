@@ -14,42 +14,55 @@ struct PaneInspectorView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 12) {
                 // Header
-                HStack {
-                    Label("Pane Inspector", systemImage: "slider.horizontal.3")
-                        .font(.headline)
+                HStack(spacing: 8) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(hex: layout.accentHex))
+                    Text("Pane Inspector")
+                        .font(.system(size: 13.5, weight: .semibold, design: .rounded))
                     Spacer()
                     if let tab = appState.selectedTab, tab.root.leafCount > 1 {
                         Button(role: .destructive) {
                             appState.removePane(pane.id)
                         } label: {
                             Image(systemName: "trash")
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.borderless)
                         .help("Remove this pane")
                     }
                 }
+                .padding(.bottom, 2)
 
                 // Identity & Focus
-                GroupBox {
+                InspectorSectionCard("Identity & Launch", systemImage: "square.text.square") {
                     VStack(alignment: .leading, spacing: 10) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Pane Title")
-                                .font(.caption)
+                                .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.secondary)
                             TextField("e.g. API Server", text: titleBinding)
                                 .textFieldStyle(.roundedBorder)
+                                .controlSize(.small)
                         }
 
                         Toggle(isOn: focusBinding) {
-                            Label("Focus this pane on launch", systemImage: "star.fill")
-                                .font(.callout)
+                            HStack(spacing: 5) {
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 10.5))
+                                    .foregroundStyle(pane.focus ? .yellow : .secondary)
+                                Text("Focus this pane on launch")
+                                    .font(.system(size: 12))
+                            }
                         }
+                        .controlSize(.small)
 
                         HStack {
                             Text("Startup Delay")
-                                .font(.callout)
+                                .font(.system(size: 12))
                             Spacer()
                             Stepper(
                                 value: delayBinding,
@@ -57,28 +70,30 @@ struct PaneInspectorView: View {
                                 step: 0.5
                             ) {
                                 Text(pane.delaySeconds == 0 ? "None" : String(format: "%.1fs", pane.delaySeconds))
-                                    .font(.system(.callout, design: .monospaced))
+                                    .font(.system(size: 11.5, weight: .medium, design: .monospaced))
                                     .foregroundStyle(pane.delaySeconds > 0 ? .orange : .secondary)
+                                    .monospacedDigit()
                             }
+                            .controlSize(.small)
                         }
                     }
-                    .padding(4)
                 }
 
                 // Working Directory & Profile
-                GroupBox("Directory & Profile") {
+                InspectorSectionCard("Directory & Profile", systemImage: "folder") {
                     VStack(alignment: .leading, spacing: 10) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Working Directory Override")
-                                .font(.caption)
+                                .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.secondary)
                             HStack(spacing: 6) {
                                 TextField(
                                     "Inherits \(layout.workingDirectory)",
                                     text: workingDirectoryBinding
                                 )
-                                .font(.system(.callout, design: .monospaced))
+                                .font(.system(size: 11.5, design: .monospaced))
                                 .textFieldStyle(.roundedBorder)
+                                .controlSize(.small)
 
                                 Button {
                                     if let chosen = appState.pickDirectory(
@@ -88,61 +103,60 @@ struct PaneInspectorView: View {
                                     }
                                 } label: {
                                     Image(systemName: "folder")
+                                        .font(.system(size: 11))
                                 }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
                                 .help("Browse folder")
                             }
                         }
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Terminal Profile (Optional)")
-                                .font(.caption)
+                                .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.secondary)
-                            TextField("e.g. Default, Pro, Dracula (iTerm2 / Terminal)", text: profileBinding)
+                            TextField("e.g. Default, Pro, Dracula", text: profileBinding)
+                                .font(.system(size: 12))
                                 .textFieldStyle(.roundedBorder)
+                                .controlSize(.small)
                         }
                     }
-                    .padding(4)
                 }
 
                 // Startup Commands
-                GroupBox {
+                InspectorSectionCard("Startup Commands", systemImage: "terminal") {
+                    Button {
+                        appState.showingCommandLibrarySheet = true
+                    } label: {
+                        Label("Library (\(appState.commandLibrary.count))", systemImage: "books.vertical")
+                            .font(.system(size: 10.5, weight: .medium))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                    .help("Browse, add, and organize reusable custom commands (⇧⌘L)")
+                } content: {
                     VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Startup Commands")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Button {
-                                appState.showingCommandLibrarySheet = true
-                            } label: {
-                                Label("Library (\(appState.commandLibrary.count))", systemImage: "books.vertical")
-                                    .font(.caption2.weight(.medium))
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.mini)
-                            .help("Browse, add, and organize reusable custom commands (⇧⌘L)")
-                        }
-
                         if pane.commands.isEmpty {
                             Text("No startup commands yet — pane opens an interactive shell.")
-                                .font(.caption)
+                                .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                         } else {
                             ForEach(Array(pane.commands.enumerated()), id: \.offset) { index, cmdText in
                                 HStack(spacing: 6) {
                                     Text("$")
-                                        .font(.system(.caption, design: .monospaced).bold())
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
                                         .foregroundStyle(Color(hex: layout.accentHex))
                                     TextField("Command", text: commandBinding(at: index))
-                                        .font(.system(.callout, design: .monospaced))
+                                        .font(.system(size: 11.5, design: .monospaced))
                                         .textFieldStyle(.roundedBorder)
+                                        .controlSize(.small)
 
                                     let alreadySaved = appState.isCommandInLibrary(cmdText)
                                     Button {
                                         openQuickSavePopover(prefillCommand: cmdText)
                                     } label: {
                                         Image(systemName: alreadySaved ? "bookmark.fill" : "bookmark")
-                                            .font(.caption)
+                                            .font(.system(size: 11))
                                             .foregroundStyle(alreadySaved ? Color(hex: "#A855F7") : .secondary)
                                     }
                                     .buttonStyle(.plain)
@@ -156,6 +170,7 @@ struct PaneInspectorView: View {
                                         }
                                     } label: {
                                         Image(systemName: "minus.circle.fill")
+                                            .font(.system(size: 11.5))
                                             .foregroundStyle(.secondary)
                                     }
                                     .buttonStyle(.plain)
@@ -165,17 +180,21 @@ struct PaneInspectorView: View {
 
                         HStack(spacing: 6) {
                             TextField("Add command (e.g. npm run dev)", text: $newCommandText)
-                                .font(.system(.callout, design: .monospaced))
+                                .font(.system(size: 11.5, design: .monospaced))
                                 .textFieldStyle(.roundedBorder)
+                                .controlSize(.small)
                                 .onSubmit { appendCommand() }
 
                             Button("Add") { appendCommand() }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
                                 .disabled(newCommandText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
                             Button {
                                 openQuickSavePopover(prefillCommand: newCommandText)
                             } label: {
                                 Image(systemName: "bookmark.circle")
+                                    .font(.system(size: 12.5))
                             }
                             .buttonStyle(.borderless)
                             .help("Add custom command to Library")
@@ -186,7 +205,7 @@ struct PaneInspectorView: View {
 
                         // Reusable Command Library Chips
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 6) {
+                            HStack(spacing: 5) {
                                 ForEach(appState.commandLibrary) { snippet in
                                     Button {
                                         appState.updatePane(pane.id) { $0.commands.append(snippet.command) }
@@ -196,9 +215,10 @@ struct PaneInspectorView: View {
                                                 .font(.system(size: 8.5))
                                                 .foregroundStyle(Color(hex: snippet.category.accentHex))
                                             Text(snippet.label)
+                                                .lineLimit(1)
                                         }
                                     }
-                                    .font(.caption2)
+                                    .font(.system(size: 10.5))
                                     .buttonStyle(.bordered)
                                     .controlSize(.mini)
                                     .help("$ \(snippet.command)")
@@ -221,82 +241,94 @@ struct PaneInspectorView: View {
                                 } label: {
                                     Label("New…", systemImage: "plus")
                                 }
-                                .font(.caption2.weight(.semibold))
+                                .font(.system(size: 10.5, weight: .semibold))
                                 .buttonStyle(.borderedProminent)
                                 .tint(Color(hex: layout.accentHex))
                                 .controlSize(.mini)
                                 .help("Add a new custom command to your library")
                             }
+                            .padding(.vertical, 2)
                         }
                     }
-                    .padding(4)
                 }
 
                 // Environment Variables
-                GroupBox("Environment Variables") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(pane.environment) { entry in
-                            HStack(spacing: 6) {
-                                TextField("KEY", text: envKeyBinding(id: entry.id))
-                                    .font(.system(.caption, design: .monospaced))
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 95)
-                                Text("=")
-                                    .foregroundStyle(.secondary)
-                                TextField("value", text: envValueBinding(id: entry.id))
-                                    .font(.system(.caption, design: .monospaced))
-                                    .textFieldStyle(.roundedBorder)
-                                Button {
-                                    appState.updatePane(pane.id) { p in
-                                        p.environment.removeAll(where: { $0.id == entry.id })
-                                    }
-                                } label: {
-                                    Image(systemName: "minus.circle.fill")
-                                        .foregroundStyle(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                            }
+                InspectorSectionCard("Environment Variables", systemImage: "list.bullet.rectangle") {
+                    Button {
+                        appState.updatePane(pane.id) { p in
+                            p.environment.append(EnvEntry(key: "NODE_ENV", value: "development"))
                         }
-
-                        Button {
-                            appState.updatePane(pane.id) { p in
-                                p.environment.append(EnvEntry(key: "NODE_ENV", value: "development"))
-                            }
-                        } label: {
-                            Label("Add Variable", systemImage: "plus")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                    } label: {
+                        Label("Add", systemImage: "plus")
+                            .font(.system(size: 10.5, weight: .medium))
                     }
-                    .padding(4)
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                } content: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if pane.environment.isEmpty {
+                            Text("No pane-specific environment variables.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(pane.environment) { entry in
+                                HStack(spacing: 6) {
+                                    TextField("KEY", text: envKeyBinding(id: entry.id))
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .textFieldStyle(.roundedBorder)
+                                        .controlSize(.small)
+                                        .frame(width: 92)
+                                    Text("=")
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                    TextField("value", text: envValueBinding(id: entry.id))
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .textFieldStyle(.roundedBorder)
+                                        .controlSize(.small)
+                                    Button {
+                                        appState.updatePane(pane.id) { p in
+                                            p.environment.removeAll(where: { $0.id == entry.id })
+                                        }
+                                    } label: {
+                                        Image(systemName: "minus.circle.fill")
+                                            .font(.system(size: 11.5))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Split Actions
-                GroupBox("Split This Pane") {
+                InspectorSectionCard("Split This Pane", systemImage: "rectangle.split.2x1") {
                     HStack(spacing: 8) {
                         Button {
                             appState.splitPane(pane.id, direction: .columns)
                         } label: {
                             Label("Left | Right", systemImage: "rectangle.split.2x1")
+                                .font(.system(size: 11.5, weight: .medium))
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
+                        .controlSize(.small)
 
                         Button {
                             appState.splitPane(pane.id, direction: .rows)
                         } label: {
                             Label("Top / Bottom", systemImage: "rectangle.split.1x2")
+                                .font(.system(size: 11.5, weight: .medium))
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
+                        .controlSize(.small)
                     }
-                    .padding(4)
                 }
             }
             .padding(14)
         }
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.45))
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.32))
     }
 
     private func appendCommand() {
