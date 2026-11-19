@@ -160,6 +160,17 @@ struct LayoutSidebarView: View {
                 )
             }
             .buttonStyle(.plain)
+        case .installing:
+            Button {
+                appState.showingUpdateSheet = true
+            } label: {
+                PillBadge(
+                    text: "Installing…",
+                    systemImage: "arrow.triangle.2.circlepath",
+                    tint: Color(hex: "#10B981")
+                )
+            }
+            .buttonStyle(.plain)
         case .readyToInstall:
             Button {
                 appState.showingUpdateSheet = true

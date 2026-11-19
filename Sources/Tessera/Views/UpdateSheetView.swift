@@ -75,7 +75,22 @@ struct UpdateSheetView: View {
             .frame(maxWidth: .infinity, minHeight: 140)
 
         case .updateAvailable(let update):
-            releaseDetailsView(update: update)
+            VStack(alignment: .leading, spacing: 10) {
+                releaseDetailsView(update: update)
+                if update.preferredAsset != nil {
+                    HStack(spacing: 6) {
+                        Image(systemName: "bolt.circle.fill")
+                            .foregroundStyle(Color(hex: "#10B981"))
+                        Text(
+                            UpdateInstaller.currentAppBundleURL() != nil
+                                ? "Once downloaded and verified, Tessera will automatically close, update, and relaunch."
+                                : "Once downloaded and verified, Tessera will close and open the downloaded installer."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+            }
 
         case .downloading(let progress, let assetName, let update):
             VStack(alignment: .leading, spacing: 12) {
@@ -92,6 +107,29 @@ struct UpdateSheetView: View {
                 }
                 .padding(12)
                 .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            }
+
+        case .installing(let downloaded):
+            VStack(alignment: .leading, spacing: 12) {
+                releaseDetailsView(update: downloaded.release)
+                HStack(spacing: 12) {
+                    ProgressView()
+                        .controlSize(.small)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Closing Tessera to install \(downloaded.release.version.tagString)…")
+                            .font(.callout.weight(.semibold))
+                        Text(
+                            downloaded.checksumVerified
+                                ? "SHA-256 verified (\(downloaded.sha256Hex.prefix(16))…) · Relaunching automatically"
+                                : "Applying update and relaunching automatically"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(12)
+                .background(Color(hex: "#10B981").opacity(0.14), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             }
 
         case .readyToInstall(let downloaded):
@@ -224,7 +262,7 @@ struct UpdateSheetView: View {
                     Button {
                         appState.downloadAvailableUpdate()
                     } label: {
-                        Label("Download Update", systemImage: "arrow.down.circle.fill")
+                        Label("Download & Install", systemImage: "arrow.down.circle.fill")
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(Color(hex: "#10B981"))
@@ -236,15 +274,20 @@ struct UpdateSheetView: View {
                 }
 
             case .readyToInstall(let downloaded):
-                Button {
+                Button("Reveal in Finder") {
                     appState.openDownloadedInstaller(downloaded)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    appState.installUpdateAndTerminate(downloaded)
                 } label: {
-                    Label("Open Installer", systemImage: "arrow.up.forward.app.fill")
+                    Label("Quit & Install Update", systemImage: "arrow.triangle.2.circlepath.circle.fill")
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Color(hex: "#10B981"))
 
-            case .checking, .downloading:
+            case .checking, .downloading, .installing:
                 EmptyView()
 
             default:

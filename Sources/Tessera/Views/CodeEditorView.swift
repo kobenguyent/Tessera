@@ -2,8 +2,9 @@ import AppKit
 import SwiftUI
 
 /// Native macOS AppKit code editor built on an explicit TextKit 1 stack with
-/// forced dark appearance, high-contrast syntax highlighting, line numbers,
-/// Find & Replace (`⌘F`), soft-tab indentation, and smart-quote/spellcheck disabled.
+/// a sibling line-number gutter (avoiding legacy `NSRulerView` Liquid Glass issues),
+/// forced dark appearance, high-contrast syntax highlighting, Find & Replace (`⌘F`),
+/// soft-tab indentation, and smart-quote/spellcheck disabled.
 struct CodeEditorView: NSViewRepresentable {
     @Binding var text: String
     var language: String
@@ -13,11 +14,122 @@ struct CodeEditorView: NSViewRepresentable {
         Coordinator(self)
     }
 
-    func makeNSView(context: Context) -> NSScrollView {
+    func makeNSView(context: Context) -> CodeEditorContainerView {
+        let container = CodeEditorContainerView(
+            text: text,
+            language: language,
+            fontSize: fontSize,
+            delegate: context.coordinator
+        )
+        context.coordinator.container = container
+        context.coordinator.observe(container: container)
+        return container
+    }
+
+    func updateNSView(_ container: CodeEditorContainerView, context: Context) {
+        context.coordinator.parent = self
+        let textView = container.textView
+
+        let languageChanged = textView.editorLanguage != language
+        textView.editorFontSize = fontSize
+        textView.editorLanguage = language
+        textView.tabWidth = (language.lowercased() == "yaml") ? 2 : 4
+
+        if textView.string != text {
+            context.coordinator.isProgrammaticUpdate = true
+            textView.string = text
+            textView.restyleAllText()
+            textView.undoManager?.removeAllActions()
+            container.scrollToTopLeft()
+            container.updateGutter()
+            context.coordinator.isProgrammaticUpdate = false
+        } else if languageChanged {
+            textView.applySyntaxHighlighting()
+        }
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: CodeEditorView
+        weak var container: CodeEditorContainerView?
+        var isProgrammaticUpdate = false
+        private var observers: [NSObjectProtocol] = []
+
+        init(_ parent: CodeEditorView) {
+            self.parent = parent
+        }
+
+        deinit {
+            for observer in observers {
+                NotificationCenter.default.removeObserver(observer)
+            }
+        }
+
+        func observe(container: CodeEditorContainerView) {
+            container.scrollView.contentView.postsBoundsChangedNotifications = true
+            let boundsObserver = NotificationCenter.default.addObserver(
+                forName: NSView.boundsDidChangeNotification,
+                object: container.scrollView.contentView,
+                queue: .main
+            ) { [weak self] _ in
+                self?.container?.gutterView.needsDisplay = true
+            }
+            let frameObserver = NotificationCenter.default.addObserver(
+                forName: NSView.frameDidChangeNotification,
+                object: container.textView,
+                queue: .main
+            ) { [weak self] _ in
+                self?.container?.gutterView.needsDisplay = true
+            }
+            observers.append(contentsOf: [boundsObserver, frameObserver])
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard !isProgrammaticUpdate,
+                  let codeView = notification.object as? TesseraCodeTextView else { return }
+            codeView.restyleAllText()
+            let updated = codeView.string
+            if parent.text != updated {
+                parent.text = updated
+            }
+            container?.updateGutter()
+        }
+    }
+}
+
+final class CodeEditorContainerView: NSView {
+    let gutterView = LineNumberGutterView()
+    let scrollView = NSScrollView()
+    let textView: TesseraCodeTextView
+    private var gutterWidth: CGFloat = 44
+
+    override var isFlipped: Bool { true }
+
+    init(text: String, language: String, fontSize: CGFloat, delegate: NSTextViewDelegate) {
         let darkAppearance = NSAppearance(named: .darkAqua)
         let editorBackground = NSColor(srgbRed: 0.08, green: 0.09, blue: 0.13, alpha: 1.0)
+        let maxDim: CGFloat = 10_000_000
 
-        let scrollView = NSScrollView()
+        // Explicit TextKit 1 stack avoids late TextKit 2 -> 1 resets when reading layoutManager.
+        let textStorage = NSTextStorage()
+        let layoutManager = NSLayoutManager()
+        textStorage.addLayoutManager(layoutManager)
+
+        let textContainer = NSTextContainer(size: NSSize(width: maxDim, height: maxDim))
+        textContainer.widthTracksTextView = false
+        textContainer.heightTracksTextView = false
+        layoutManager.addTextContainer(textContainer)
+
+        textView = TesseraCodeTextView(
+            frame: NSRect(x: 0, y: 0, width: 640, height: 320),
+            textContainer: textContainer
+        )
+
+        super.init(frame: NSRect(x: 0, y: 0, width: 720, height: 320))
+
+        self.appearance = darkAppearance
+        self.wantsLayer = true
+        self.layer?.backgroundColor = editorBackground.cgColor
+
         scrollView.appearance = darkAppearance
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
@@ -25,26 +137,11 @@ struct CodeEditorView: NSViewRepresentable {
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = true
         scrollView.backgroundColor = editorBackground
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentInsets = NSEdgeInsetsZero
 
-        // Construct an explicit TextKit 1 stack up front so accessing `layoutManager`
-        // for line numbers / highlighting never triggers a late TextKit 2 -> 1 reset.
-        let textStorage = NSTextStorage()
-        let layoutManager = NSLayoutManager()
-        textStorage.addLayoutManager(layoutManager)
-
-        let textContainer = NSTextContainer(
-            size: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        )
-        textContainer.widthTracksTextView = false
-        textContainer.heightTracksTextView = false
-        layoutManager.addTextContainer(textContainer)
-
-        let textView = TesseraCodeTextView(
-            frame: NSRect(x: 0, y: 0, width: 800, height: 600),
-            textContainer: textContainer
-        )
         textView.appearance = darkAppearance
-        textView.delegate = context.coordinator
+        textView.delegate = delegate
         textView.isEditable = true
         textView.isSelectable = true
         textView.allowsUndo = true
@@ -54,7 +151,7 @@ struct CodeEditorView: NSViewRepresentable {
         textView.importsGraphics = false
         textView.drawsBackground = true
 
-        // Critical for editing AppleScript / Shell / YAML: disable all smart text substitutions.
+        // Disable all smart text substitutions so AppleScript / Shell / YAML stay exact.
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
@@ -73,9 +170,9 @@ struct CodeEditorView: NSViewRepresentable {
         textView.textContainerInset = NSSize(width: 10, height: 12)
         textView.isHorizontallyResizable = true
         textView.isVerticallyResizable = true
-        textView.autoresizingMask = [.width]
-        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.autoresizingMask = []
         textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(width: maxDim, height: maxDim)
 
         textView.editorFontSize = fontSize
         textView.editorLanguage = language
@@ -86,90 +183,56 @@ struct CodeEditorView: NSViewRepresentable {
 
         scrollView.documentView = textView
 
-        // Attach line-number gutter ruler
-        let ruler = LineNumberRulerView(textView: textView)
-        ruler.appearance = darkAppearance
-        scrollView.verticalRulerView = ruler
-        scrollView.hasVerticalRuler = true
-        scrollView.rulersVisible = true
-        ruler.updateThicknessIfNeeded()
+        gutterView.appearance = darkAppearance
+        gutterView.textView = textView
 
-        context.coordinator.textView = textView
-        context.coordinator.rulerView = ruler
-        context.coordinator.observe(textView: textView, scrollView: scrollView)
-
-        return scrollView
+        addSubview(gutterView)
+        addSubview(scrollView)
+        updateGutter()
     }
 
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        context.coordinator.parent = self
-        guard let textView = scrollView.documentView as? TesseraCodeTextView else { return }
-
-        let languageChanged = textView.editorLanguage != language
-        textView.editorFontSize = fontSize
-        textView.editorLanguage = language
-        textView.tabWidth = (language.lowercased() == "yaml") ? 2 : 4
-
-        if textView.string != text {
-            context.coordinator.isProgrammaticUpdate = true
-            textView.string = text
-            textView.restyleAllText()
-            textView.undoManager?.removeAllActions()
-            context.coordinator.isProgrammaticUpdate = false
-            context.coordinator.rulerView?.updateThicknessIfNeeded()
-            context.coordinator.rulerView?.needsDisplay = true
-        } else if languageChanged {
-            textView.applySyntaxHighlighting()
-        }
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 
-    final class Coordinator: NSObject, NSTextViewDelegate {
-        var parent: CodeEditorView
-        weak var textView: TesseraCodeTextView?
-        weak var rulerView: LineNumberRulerView?
-        var isProgrammaticUpdate = false
-        private var observers: [NSObjectProtocol] = []
+    override func layout() {
+        super.layout()
+        gutterView.frame = NSRect(x: 0, y: 0, width: gutterWidth, height: bounds.height)
+        scrollView.frame = NSRect(
+            x: gutterWidth,
+            y: 0,
+            width: max(0, bounds.width - gutterWidth),
+            height: bounds.height
+        )
 
-        init(_ parent: CodeEditorView) {
-            self.parent = parent
+        let contentSize = scrollView.contentSize
+        textView.minSize = contentSize
+        if textView.frame.width < contentSize.width || textView.frame.height < contentSize.height {
+            textView.setFrameSize(NSSize(
+                width: max(textView.frame.width, contentSize.width),
+                height: max(textView.frame.height, contentSize.height)
+            ))
         }
+        if textView.frame.origin != .zero {
+            textView.setFrameOrigin(.zero)
+        }
+        gutterView.needsDisplay = true
+    }
 
-        deinit {
-            for observer in observers {
-                NotificationCenter.default.removeObserver(observer)
-            }
-        }
+    func scrollToTopLeft() {
+        scrollView.contentView.scroll(to: .zero)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
 
-        func observe(textView: NSTextView, scrollView: NSScrollView) {
-            scrollView.contentView.postsBoundsChangedNotifications = true
-            let boundsObserver = NotificationCenter.default.addObserver(
-                forName: NSView.boundsDidChangeNotification,
-                object: scrollView.contentView,
-                queue: .main
-            ) { [weak self] _ in
-                self?.rulerView?.needsDisplay = true
-            }
-            let frameObserver = NotificationCenter.default.addObserver(
-                forName: NSView.frameDidChangeNotification,
-                object: textView,
-                queue: .main
-            ) { [weak self] _ in
-                self?.rulerView?.needsDisplay = true
-            }
-            observers.append(contentsOf: [boundsObserver, frameObserver])
+    func updateGutter() {
+        let lineCount = max(1, textView.string.reduce(1) { $0 + ($1 == "\n" ? 1 : 0) })
+        let digits = max(2, String(lineCount).count)
+        let desired = CGFloat(digits) * 8.5 + 24
+        if abs(gutterWidth - desired) > 1 {
+            gutterWidth = desired
+            needsLayout = true
         }
-
-        func textDidChange(_ notification: Notification) {
-            guard !isProgrammaticUpdate,
-                  let codeView = notification.object as? TesseraCodeTextView else { return }
-            codeView.restyleAllText()
-            let updated = codeView.string
-            if parent.text != updated {
-                parent.text = updated
-            }
-            rulerView?.updateThicknessIfNeeded()
-            rulerView?.needsDisplay = true
-        }
+        gutterView.needsDisplay = true
     }
 }
 
@@ -291,95 +354,54 @@ final class TesseraCodeTextView: NSTextView {
     }
 }
 
-final class LineNumberRulerView: NSRulerView {
-    private weak var textView: NSTextView?
+final class LineNumberGutterView: NSView {
+    weak var textView: NSTextView?
 
-    init(textView: NSTextView) {
-        self.textView = textView
-        super.init(scrollView: textView.enclosingScrollView, orientation: .verticalRuler)
-        self.clientView = textView
-        self.ruleThickness = 44
-    }
+    override var isFlipped: Bool { true }
 
-    required init(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    func updateThicknessIfNeeded() {
-        guard let text = textView?.string else { return }
-        let lineCount = max(1, text.reduce(1) { $0 + ($1 == "\n" ? 1 : 0) })
-        let digits = max(2, String(lineCount).count)
-        let desired = CGFloat(digits) * 8.5 + 22
-        if abs(ruleThickness - desired) > 1 {
-            ruleThickness = desired
-        }
-    }
-
-    override func drawHashMarksAndLabels(in rect: NSRect) {
-        // Gutter background & subtle divider
+    override func draw(_ dirtyRect: NSRect) {
         NSColor(srgbRed: 0.06, green: 0.07, blue: 0.10, alpha: 1.0).setFill()
-        rect.fill()
+        bounds.fill()
 
         NSColor(srgbRed: 1.0, green: 1.0, blue: 1.0, alpha: 0.09).setFill()
-        NSRect(x: bounds.maxX - 1, y: rect.minY, width: 1, height: rect.height).fill()
+        NSRect(x: bounds.maxX - 1, y: 0, width: 1, height: bounds.height).fill()
 
         guard let textView,
               let layoutManager = textView.layoutManager,
               let textContainer = textView.textContainer else { return }
 
-        let visibleRect = scrollView?.contentView.bounds ?? textView.visibleRect
+        layoutManager.ensureLayout(for: textContainer)
         let textInset = textView.textContainerInset
         let content = textView.string as NSString
 
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
-            .foregroundColor: NSColor(srgbRed: 0.62, green: 0.68, blue: 0.80, alpha: 0.65)
+            .foregroundColor: NSColor(srgbRed: 0.62, green: 0.68, blue: 0.80, alpha: 0.70)
         ]
 
-        let containerRect = NSRect(
-            x: 0,
-            y: max(0, visibleRect.minY - textInset.height),
-            width: textContainer.containerSize.width,
-            height: visibleRect.height + textInset.height * 2
-        )
-        let glyphRange = layoutManager.glyphRange(forBoundingRect: containerRect, in: textContainer)
-        let charRange = layoutManager.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
-
-        var lineNumber = 1
-        var scanIndex = 0
-        while scanIndex < charRange.location {
-            let lineRange = content.lineRange(for: NSRange(location: scanIndex, length: 0))
-            lineNumber += 1
-            scanIndex = NSMaxRange(lineRange)
-            if lineRange.length == 0 { break }
-        }
-
-        var index = charRange.location
-        let maxIndex = NSMaxRange(charRange)
-
-        func drawLineNumber(_ number: Int, yInTextView: CGFloat, lineHeight: CGFloat) {
+        func drawLineNumber(_ number: Int, yInTextContainer: CGFloat, lineHeight: CGFloat) {
+            let yInGutter = convert(NSPoint(x: 0, y: yInTextContainer + textInset.height), from: textView).y
             let label = "\(number)" as NSString
             let size = label.size(withAttributes: attributes)
-            let yPos = yInTextView + textInset.height - visibleRect.minY + (lineHeight - size.height) / 2.0
-            let drawPoint = NSPoint(x: ruleThickness - size.width - 10, y: yPos)
-            label.draw(at: drawPoint, withAttributes: attributes)
+            let yPos = yInGutter + (lineHeight - size.height) / 2.0
+            guard yPos + size.height >= -4 && yPos <= bounds.height + 4 else { return }
+            label.draw(at: NSPoint(x: bounds.width - size.width - 10, y: yPos), withAttributes: attributes)
         }
 
         if content.length == 0 {
-            drawLineNumber(1, yInTextView: 0, lineHeight: 18)
+            drawLineNumber(1, yInTextContainer: 0, lineHeight: 18)
             return
         }
 
-        while index < maxIndex {
+        var lineNumber = 1
+        var index = 0
+        while index < content.length {
             let lineRange = content.lineRange(for: NSRange(location: index, length: 0))
-            let lineGlyphRange = layoutManager.glyphRange(forCharacterRange: lineRange, actualCharacterRange: nil)
-            if lineGlyphRange.location != NSNotFound && lineGlyphRange.length > 0 {
-                var effectiveRange = NSRange(location: 0, length: 0)
-                let lineRect = layoutManager.lineFragmentRect(
-                    forGlyphAt: lineGlyphRange.location,
-                    effectiveRange: &effectiveRange
-                )
-                drawLineNumber(lineNumber, yInTextView: lineRect.minY, lineHeight: lineRect.height)
+            let glyphRange = layoutManager.glyphRange(forCharacterRange: lineRange, actualCharacterRange: nil)
+            if glyphRange.location != NSNotFound && glyphRange.length > 0 {
+                var eff = NSRange()
+                let lineRect = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: &eff)
+                drawLineNumber(lineNumber, yInTextContainer: lineRect.minY, lineHeight: lineRect.height)
             }
             lineNumber += 1
             let next = NSMaxRange(lineRange)
@@ -390,7 +412,7 @@ final class LineNumberRulerView: NSRulerView {
         if content.hasSuffix("\n") {
             let extraRect = layoutManager.extraLineFragmentRect
             if extraRect.height > 0 {
-                drawLineNumber(lineNumber, yInTextView: extraRect.minY, lineHeight: extraRect.height)
+                drawLineNumber(lineNumber, yInTextContainer: extraRect.minY, lineHeight: extraRect.height)
             }
         }
     }

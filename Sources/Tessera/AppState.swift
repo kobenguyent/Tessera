@@ -10,6 +10,7 @@ enum UpdateUIState: Equatable {
     case upToDate(current: SemanticVersion, latest: SemanticVersion?, checkedAt: Date)
     case updateAvailable(UpdateRelease)
     case downloading(progress: Double, assetName: String, release: UpdateRelease)
+    case installing(DownloadedUpdate)
     case readyToInstall(DownloadedUpdate)
     case failed(String)
 
@@ -17,6 +18,7 @@ enum UpdateUIState: Equatable {
         switch self {
         case .updateAvailable(let release): return release
         case .downloading(_, _, let release): return release
+        case .installing(let downloaded): return downloaded.release
         case .readyToInstall(let downloaded): return downloaded.release
         default: return nil
         }
@@ -24,7 +26,7 @@ enum UpdateUIState: Equatable {
 
     var hasActionableUpdate: Bool {
         switch self {
-        case .updateAvailable, .downloading, .readyToInstall:
+        case .updateAvailable, .downloading, .installing, .readyToInstall:
             return true
         default:
             return false
@@ -665,15 +667,39 @@ final class AppState: ObservableObject {
                         self?.updateState = .downloading(progress: fraction, assetName: assetName, release: release)
                     }
                 }
-                self.updateState = .readyToInstall(downloaded)
+
+                // Persist state cleanly before closing the app for streamlined replacement.
+                self.saveLayouts()
+                self.saveSettings()
+                self.updateState = .installing(downloaded)
                 self.showToast(
-                    "Downloaded \(downloaded.fileURL.lastPathComponent)",
-                    subtitle: downloaded.checksumVerified ? "SHA-256 integrity verified" : "Ready to install"
+                    "Updating to \(downloaded.release.version.tagString)…",
+                    subtitle: downloaded.checksumVerified
+                        ? "SHA-256 verified · Closing Tessera to apply update"
+                        : "Closing Tessera to apply update"
                 )
+
+                // Brief beat so the user sees download/verification confirmation before app exits.
+                try? await Task.sleep(for: .milliseconds(750))
+                self.installUpdateAndTerminate(downloaded)
             } catch {
                 self.updateState = .failed(error.localizedDescription)
                 self.showToast("Download Failed", subtitle: error.localizedDescription, isError: true)
             }
+        }
+    }
+
+    func installUpdateAndTerminate(_ downloaded: DownloadedUpdate) {
+        saveLayouts()
+        saveSettings()
+
+        let plan = UpdateInstallPlan(downloadedAssetURL: downloaded.fileURL)
+        do {
+            try UpdateInstaller.launchDetachedInstaller(plan: plan)
+            NSApplication.shared.terminate(nil)
+        } catch {
+            updateState = .readyToInstall(downloaded)
+            showToast("Manual Install Needed", subtitle: error.localizedDescription, isError: true)
         }
     }
 

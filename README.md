@@ -103,7 +103,7 @@ Tessera automatically checks `https://api.github.com/repos/<owner>/<repo>/releas
 - Compares SemVer 2.0 release tags (`v1.2.0`, `v1.3.0-beta.1`) against the running `CFBundleShortVersionString`.
 - Ignores draft releases always, and ignores pre-releases unless opted in.
 - Selects the best macOS artifact (`.dmg` universal/arch-matched, falling back to `.zip`).
-- Downloads directly to `~/Downloads` with a live progress bar and **cryptographically verifies SHA-256** against the release's `SHA256SUMS.txt` asset before presenting **Open Installer**.
+- Downloads directly to `~/Downloads` with a live progress bar, **cryptographically verifies SHA-256** against the release's `SHA256SUMS.txt` asset, and then **automatically closes the current app, atomically replaces `Tessera.app` from the `.dmg`/`.zip` (with rollback safety), and relaunches the new version**.
 - The target repository is automatically embedded into `Info.plist` (`TesseraGitHubRepo`) by the release workflow so forks automatically track their own GitHub Releases, and can also be edited in **Settings → Updates** or overridden via `TESSERA_GITHUB_REPO`.
 
 ---
