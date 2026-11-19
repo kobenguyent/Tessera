@@ -123,6 +123,7 @@ struct ScriptEditorView: View {
                 )
         )
         .shadow(color: .black.opacity(0.22), radius: 14, y: 6)
+        .environment(\.colorScheme, .dark)
         .onChange(of: layout.id) { _, _ in
             validationResult = nil
         }
